@@ -6,7 +6,6 @@ from scipy.interpolate import interp1d
 
 # --- 1. ตั้งค่า Path สำหรับโฟลเดอร์ MESA ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# หากไฟล์นี้อยู่ในโฟลเดอร์ src ให้ถอยกลับมา 1 ขั้น
 if os.path.basename(BASE_DIR) == 'src':
     BASE_DIR = os.path.dirname(BASE_DIR)
 
@@ -17,54 +16,65 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 def process_mesa_profile():
     # --- 2. ค้นหาไฟล์ profile.data ในโฟลเดอร์ ---
-    # ใช้ glob ค้นหาไฟล์ที่ขึ้นต้นด้วย profile และลงท้ายด้วย .data
     profile_files = glob.glob(os.path.join(RAW_DIR, "**", "profile*.data"), recursive=True)
 
     if not profile_files:
         print("❌ ไม่พบไฟล์ profile.data ในโฟลเดอร์ โปรดตรวจสอบการแตกไฟล์")
         return
 
-    # เลือกไฟล์ profile ล่าสุด (มักจะเป็นจุดจบการทำงานของ MESA)
     target_file = profile_files[-1]
     print(f"กำลังเปิดไฟล์ MESA: {os.path.basename(target_file)}")
 
     # --- 3. อ่านไฟล์ MESA Profile ---
     try:
-        # MESA มักจะมี Header 5 บรรทัดแรก บรรทัดที่ 6 คือชื่อคอลัมน์
-        df = pd.read_csv(target_file, delim_whitespace=True, skiprows=5)
+        df = pd.read_csv(target_file, sep=r'\s+', skiprows=5)
 
-        # ตรวจสอบว่าคอลัมน์มีอะไรบ้าง (เผื่อเวอร์ชัน MESA ต่างกัน)
-        required_cols = ['radius', 'logP', 'logRho']
-        for col in required_cols:
-            if col not in df.columns:
-                print(f"❌ ไม่พบคอลัมน์ {col} ในไฟล์ MESA")
-                return
-
-        # แปลงข้อมูลจาก Log กลับเป็นค่าปกติ (antilog)
-        # รัศมีใน MESA เป็นหน่วย R/R_sun อยู่แล้ว
+        if 'radius' not in df.columns:
+            print("❌ ไม่พบคอลัมน์ radius")
+            return
         r_actual = df['radius'].values
-        p_actual = 10 ** df['logP'].values
-        rho_actual = 10 ** df['logRho'].values
 
-        # MESA จะเรียงข้อมูลจากผิวดาว -> แก่นกลาง เราต้องกลับด้าน (Reverse) ให้เป็น 0 -> 1
+        # ตรวจสอบและดึงค่าความดัน (Pressure)
+        if 'pressure' in df.columns:
+            p_actual = df['pressure'].values
+        elif 'logP' in df.columns:
+            p_actual = 10 ** df['logP'].values
+        elif 'log_P' in df.columns:
+            p_actual = 10 ** df['log_P'].values
+        else:
+            print("❌ ไม่พบคอลัมน์สำหรับความดัน (pressure/logP/log_P)")
+            return
+
+        # ตรวจสอบและดึงค่าความหนาแน่น (Density)
+        if 'logRho' in df.columns:
+            rho_actual = 10 ** df['logRho'].values
+        elif 'log_rho' in df.columns:
+            rho_actual = 10 ** df['log_rho'].values
+        elif 'density' in df.columns:
+            rho_actual = df['density'].values
+        else:
+            print("❌ ไม่พบคอลัมน์สำหรับความหนาแน่น (density/logRho/log_rho)")
+            return
+
+        # กลับด้านข้อมูลจาก แก่นกลาง (0) -> ผิวดาว
         r_reversed = r_actual[::-1]
         p_reversed = p_actual[::-1]
         rho_reversed = rho_actual[::-1]
 
-        # Normalize รัศมีให้เป็น 0 ถึง 1 เป๊ะๆ
+        # Normalize รัศมี
         r_normalized = r_reversed / r_reversed.max()
 
         # --- 4. กระบวนการทำ 500-Point Interpolation ---
         print("กำลังทำ 500-Point Interpolation ตามเปเปอร์...")
-        interp_p = interp1d(r_normalized, p_reversed, kind='cubic')
-        interp_rho = interp1d(r_normalized, rho_reversed, kind='cubic')
 
-        # สร้างจุด 500 จุด
+        # 🌟 แก้ไขตรงนี้: เพิ่ม fill_value="extrapolate" เพื่อให้เดาค่าที่ R=0 ได้
+        interp_p = interp1d(r_normalized, p_reversed, kind='cubic', fill_value="extrapolate")
+        interp_rho = interp1d(r_normalized, rho_reversed, kind='cubic', fill_value="extrapolate")
+
         r_500 = np.linspace(0.00, 1.00, 500)
         p_500 = interp_p(r_500)
         rho_500 = interp_rho(r_500)
 
-        # ป้องกันค่าติดลบที่ขอบดาว
         p_500 = np.clip(p_500, a_min=1e4, a_max=None)
         rho_500 = np.clip(rho_500, a_min=1e-9, a_max=None)
 
@@ -84,4 +94,4 @@ def process_mesa_profile():
 
 
 if __name__ == "__main__":
-    process_mesa_profile()()
+    process_mesa_profile()
