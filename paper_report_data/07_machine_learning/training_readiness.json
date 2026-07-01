@@ -1,0 +1,19 @@
+{
+  "pinn_trained": false,
+  "available_models": 8,
+  "available_stellar_tracks": 1,
+  "paper_target_models": 50000,
+  "architecture_implemented": true,
+  "split_required": {
+    "training_percent": 70,
+    "validation_percent": 15,
+    "test_percent": 15
+  },
+  "training_required": {
+    "epochs": 300,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "patience": 20
+  },
+  "blocking_reason": "One solar-mass MESA track is not sufficient for a generalizable PINN."
+}

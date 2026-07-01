@@ -1,5 +1,9 @@
 .venv/
+.venv-*/
 venv/
-data/
 .idea/
 __pycache__/
+.pytest_cache/
+*.pyc
+outputs/streamlit.*.log
+tmp/

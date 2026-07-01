@@ -1,0 +1,11 @@
+paper_step,paper_pages,method,evidence
+1,38,Data input handling,01_input/global_parameters.csv; 01_input/source_manifest.csv
+2,38-39,Read source and convert units,01_input/source_manifest.csv; 02_preprocessing/profiles/
+3,39,Validate and resample,02_preprocessing/quality_checks.csv
+4,39-40,"Global, local, and zonal indices",03_polytropic_indices/
+5,40,Five deviation drivers,04_deviation_drivers/
+6,40-41,PINN training,07_machine_learning/training_readiness.json
+7,41,Uncertainty,06_uncertainty/
+8,41-42,Database and storage,08_storage/storage_evidence.json
+9,42,Testing and validation,09_validation/validation_summary.json
+10,42,Logging and monitoring,10_monitoring/reproducibility.json

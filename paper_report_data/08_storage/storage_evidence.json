@@ -1,0 +1,11 @@
+{
+  "database_models": [
+    "stars",
+    "profiles",
+    "results"
+  ],
+  "implementation": "stellar_analyzer.web.database",
+  "local_array_format": "CSV evidence package; HDF5 supported by loader",
+  "production_database": "PostgreSQL via SQLAlchemy",
+  "database_deployed": false
+}

@@ -1,0 +1,8 @@
+{
+  "method": "resample radial-density pairs with replacement and refit n_global",
+  "required_resamples": 1000,
+  "implemented_function": "stellar_analyzer.core.uncertainty.bootstrap_global_n",
+  "status": "not_run_for_this_evidence_build",
+  "reason": "Bootstrap is intentionally kept separate because it is stochastic and computationally expensive.",
+  "reproduction_command": ".venv\\Scripts\\python.exe -m stellar_analyzer.cli uncertainty --bootstrap 1000 (CLI pending)"
+}

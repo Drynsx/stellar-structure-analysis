@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+*.data text eol=lf
+*.csv text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+
+*.h5 binary
+*.mp4 binary
+*.pt binary
+
+# Preserve downloaded simulation records byte-for-byte for provenance hashes.
+data/raw/** binary
