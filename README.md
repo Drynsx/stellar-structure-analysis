@@ -11,40 +11,43 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-Use either `stellar-analyzer` after installation or the always-available
-`.venv\Scripts\python.exe -m stellar_analyzer` form shown below.
+After installation, run commands through the repository launcher:
+
+```powershell
+.\stellar --help
+```
 
 ## Analyze
 
 List the bundled MESA snapshots:
 
 ```powershell
-.venv\Scripts\python.exe -m stellar_analyzer profiles
+.\stellar profiles
 ```
 
 Analyze the latest snapshot, with a concise JSON result:
 
 ```powershell
-.venv\Scripts\python.exe -m stellar_analyzer analyze mesa
+.\stellar analyze mesa
 ```
 
 Analyze a particular snapshot and save full radial arrays:
 
 ```powershell
-.venv\Scripts\python.exe -m stellar_analyzer analyze mesa --profile 8 --full --output outputs\profile8.json
+.\stellar analyze mesa --profile 8 --full --output outputs\profile8.json
 ```
 
 Analyze stellar parameters or an external profile:
 
 ```powershell
-.venv\Scripts\python.exe -m stellar_analyzer analyze star --name Sun --mass 1 --teff 5778 --age 4.6
-.venv\Scripts\python.exe -m stellar_analyzer analyze profile path\to\profile.data
+.\stellar analyze star --name Sun --mass 1 --teff 5778 --age 4.6
+.\stellar analyze profile path\to\profile.data
 ```
 
 For a catalog, provide CSV columns `mass`, `teff`, `metallicity`, and `age`:
 
 ```powershell
-.venv\Scripts\python.exe -m stellar_analyzer batch stars.csv --output outputs\catalog_results.csv
+.\stellar batch stars.csv --output outputs\catalog_results.csv
 ```
 
 ## Prepare and train the PINN
@@ -56,9 +59,9 @@ Wide-range deviation targets use a reversible signed-log transform during
 optimization and are converted back to physical values for prediction output.
 
 ```powershell
-.venv\Scripts\python.exe -m stellar_analyzer prepare-pinn
-.venv\Scripts\python.exe -m stellar_analyzer dataset-info
-.venv\Scripts\python.exe -m stellar_analyzer train-pinn --config configs\pinn_training.json
+.\stellar prepare-pinn
+.\stellar dataset-info
+.\stellar train-pinn --config configs\pinn_training.json
 ```
 
 Training uses deterministic profile-level train/validation/test splits,
@@ -69,7 +72,7 @@ pipeline check can use `--epochs 2 --output models\smoke_checkpoint.pt`.
 After training:
 
 ```powershell
-.venv\Scripts\python.exe -m stellar_analyzer predict --mass 1 --teff 5778 --age 4.6 --output outputs\sun_pinn.json
+.\stellar predict --mass 1 --teff 5778 --age 4.6 --output outputs\sun_pinn.json
 ```
 
 The bundled data contains one solar-mass evolutionary track. It is enough to
