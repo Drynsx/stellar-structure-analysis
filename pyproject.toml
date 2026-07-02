@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stellar-structure-analyzer"
-version = "0.2.0"
+version = "0.3.0"
 description = "CLI for stellar polytropic analysis and PINN training"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,6 +13,8 @@ dependencies = [
   "pandas>=2.0",
   "h5py>=3.8",
   "torch>=2.0",
+  "rich>=13.7",
+  "matplotlib>=3.8",
 ]
 
 [project.optional-dependencies]

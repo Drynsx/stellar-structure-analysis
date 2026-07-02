@@ -31,6 +31,18 @@ Analyze the latest snapshot, with a concise JSON result:
 .\stellar analyze mesa
 ```
 
+The default view is a readable terminal report. Add `--json` for machine-readable
+output, or `--output` to write JSON to a file.
+
+Display a radial graph directly in the terminal, or save a report-ready PNG:
+
+```powershell
+.\stellar plot density --profile 8
+.\stellar plot temperature --profile 8 --save outputs\temperature.png
+```
+
+Available graphs are `density`, `pressure`, `temperature`, and `local-n`.
+
 Analyze a particular snapshot and save full radial arrays:
 
 ```powershell

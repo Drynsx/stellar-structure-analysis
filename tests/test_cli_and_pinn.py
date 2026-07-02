@@ -29,6 +29,21 @@ def test_cli_analyzes_mesa_to_json(tmp_path):
     assert "profile" not in result
 
 
+def test_cli_renders_analysis_and_terminal_plot(capsys):
+    assert main(["analyze", "star", "--mass", "1", "--teff", "5778", "--age", "4.6"]) == 0
+    assert "Physical contributions" in capsys.readouterr().out
+    assert main(["plot", "density", "--profile", "8", "--width", "30", "--height", "8"]) == 0
+    output = capsys.readouterr().out
+    assert "Density" in output
+    assert "radius / R" in output
+
+
+def test_cli_saves_png_plot(tmp_path):
+    output = tmp_path / "density.png"
+    assert main(["plot", "density", "--profile", "8", "--save", str(output), "--save-only"]) == 0
+    assert output.read_bytes().startswith(b"\x89PNG")
+
+
 def test_pinn_forward_and_physics_loss_are_differentiable():
     model = StellarPINN(width=16, depth=2)
     stored = torch.rand(2, 20, 15)

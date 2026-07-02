@@ -12,6 +12,8 @@ import pandas as pd
 
 from stellar_analyzer.core.data_loader import list_mesa_profiles
 from stellar_analyzer.core.pipeline import analyze_mesa_job, analyze_profile, analyze_star, batch_analyze
+from stellar_analyzer.ui import banner, console, show_analysis, show_error, show_profiles, success
+from stellar_analyzer.visualization import PLOT_FIELDS
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_JOB = ROOT / "data" / "raw" / "MESA-Web_Job_03242664908"
 DEFAULT_DATASET = ROOT / "data" / "processed" / "pinn_dataset.npz"
@@ -46,9 +48,7 @@ def _run_profiles(args) -> None:
     if args.json:
         _write_json(snapshots)
         return
-    print(f"{'PROFILE':>7}  {'MODEL':>7}  PATH")
-    for item in snapshots:
-        print(f"{item['profile_number']:>7}  {item['model_number']:>7}  {item['path']}")
+    show_profiles(snapshots)
 
 
 def _run_analyze(args) -> None:
@@ -59,7 +59,23 @@ def _run_analyze(args) -> None:
         result = analyze_mesa_job(args.job, args.profile)
     else:
         result = analyze_profile(args.path, n_points=args.points)
-    _write_json(result if args.full else _summary(result), args.output)
+    selected = result if args.full else _summary(result)
+    if args.output or args.json:
+        _write_json(selected, args.output)
+    else:
+        show_analysis(result)
+
+
+def _run_plot(args) -> None:
+    from stellar_analyzer.visualization import save_plot, terminal_plot
+
+    if args.save_only and not args.save:
+        raise ValueError("--save-only requires --save PATH")
+    result = analyze_mesa_job(args.job, args.profile)
+    if not args.save_only:
+        terminal_plot(result, args.field, args.width, args.height)
+    if args.save:
+        save_plot(result, args.field, args.save)
 
 
 def _run_batch(args) -> None:
@@ -68,7 +84,7 @@ def _run_batch(args) -> None:
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(output, index=False)
-    print(f"Analyzed {len(result)} stars -> {output}")
+    success(f"Analyzed {len(result)} stars -> {output}")
 
 
 def _run_prepare(args) -> None:
@@ -134,8 +150,8 @@ def _run_predict(args) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="stellar-analyzer", description="Stellar structure analysis and PINN training")
-    parser.add_argument("--version", action="version", version="stellar-analyzer 0.2.0")
+    parser = argparse.ArgumentParser(prog="stellar", description="Explore stellar structure, MESA profiles, and PINN models")
+    parser.add_argument("--version", action="version", version="stellar-analyzer 0.3.0")
     commands = parser.add_subparsers(dest="command", required=True)
 
     profiles = commands.add_parser("profiles", help="list snapshots in a MESA-Web job")
@@ -159,8 +175,19 @@ def build_parser() -> argparse.ArgumentParser:
     profile.add_argument("--points", type=int, default=500)
     for source in (star, mesa, profile):
         source.add_argument("--output")
+        source.add_argument("--json", action="store_true", help="print machine-readable JSON")
         source.add_argument("--full", action="store_true", help="include radial arrays in JSON output")
         source.set_defaults(func=_run_analyze)
+
+    plot = commands.add_parser("plot", help="display a radial profile graph")
+    plot.add_argument("field", choices=list(PLOT_FIELDS))
+    plot.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    plot.add_argument("--profile", type=int)
+    plot.add_argument("--save", type=Path, help="also save a high-resolution PNG")
+    plot.add_argument("--save-only", action="store_true", help="skip the terminal graph")
+    plot.add_argument("--width", type=int, default=68)
+    plot.add_argument("--height", type=int, default=16)
+    plot.set_defaults(func=_run_plot)
 
     batch = commands.add_parser("batch", help="analyze a CSV catalog")
     batch.add_argument("input", type=Path)
@@ -204,11 +231,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     try:
-        args = build_parser().parse_args(argv)
+        parser = build_parser()
+        effective_argv = sys.argv[1:] if argv is None else argv
+        if not effective_argv:
+            banner()
+            console.print("[muted]Start with[/muted]  [accent].\\stellar profiles[/accent]  [muted]or[/muted]  [accent].\\stellar --help[/accent]")
+            return 0
+        args = parser.parse_args(effective_argv)
         args.func(args)
         return 0
     except (FileNotFoundError, ValueError, ImportError, RuntimeError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        show_error(str(exc))
         return 2
 
 
