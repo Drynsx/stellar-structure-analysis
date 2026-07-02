@@ -1,11 +1,15 @@
-paper_step,paper_pages,method,evidence
-1,38,Data input handling,01_input/global_parameters.csv; 01_input/source_manifest.csv
-2,38-39,Read source and convert units,01_input/source_manifest.csv; 02_preprocessing/profiles/
-3,39,Validate and resample,02_preprocessing/quality_checks.csv
-4,39-40,"Global, local, and zonal indices",03_polytropic_indices/
-5,40,Five deviation drivers,04_deviation_drivers/
-6,40-41,PINN training,07_machine_learning/training_readiness.json
-7,41,Uncertainty,06_uncertainty/
-8,41-42,Database and storage,08_storage/storage_evidence.json
-9,42,Testing and validation,09_validation/validation_summary.json
-10,42,Logging and monitoring,10_monitoring/reproducibility.json
+chapter_part,paper_pages,method,evidence
+Part 1,18-20,"Lane-Emden RK4 and global n, K, alpha fitting",01_part1_polytropic_indices/global_fits.csv
+Part 1,20-21,Local index with smoothing and center extrapolation,01_part1_polytropic_indices/local_indices.csv
+Part 1,21-22,"Core, radiative, and convective piecewise fitting",01_part1_polytropic_indices/piecewise_fits.csv
+Part 1,22-23,Bootstrap and propagated uncertainty,01_part1_polytropic_indices/bootstrap_protocol.json; 02_part2_physical_deviations/radiation_error_propagation.csv
+Part 1,23-24,Internal consistency and chi-square comparison,01_part1_polytropic_indices/internal_consistency.csv
+Part 2,24-27,Radiation-pressure deviation,02_part2_physical_deviations/radial_deviation_profiles.csv
+Part 2,27-29,Composition-gradient deviation,02_part2_physical_deviations/radial_deviation_profiles.csv
+Part 2,29-30,Convective deviation,02_part2_physical_deviations/radial_deviation_profiles.csv
+Part 2,30-31,Nuclear-concentration deviation,02_part2_physical_deviations/deviation_summary.csv
+Part 2,31-35,Electron-degeneracy deviation,02_part2_physical_deviations/radial_deviation_profiles.csv
+Part 3,36-37,Global residual and relative contributions,03_part3_global_comparison/
+Part 4,37-40,"Input, preprocessing, fitting, and driver modules",01_part1_polytropic_indices/; 02_part2_physical_deviations/
+Part 4,40-41,PINN architecture and training protocol,04_part4_computational_implementation/machine_learning/training_readiness.json
+Part 4,41-42,"Storage, validation, and monitoring",04_part4_computational_implementation/

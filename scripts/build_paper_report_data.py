@@ -20,6 +20,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from stellar_analyzer.core.data_loader import list_mesa_profiles, load_mesa_web_job
+from stellar_analyzer.core.constants import G_CGS, K_B_CGS, M_P_CGS
+from stellar_analyzer.core.deviation_drivers import (
+    calculate_delta_n_conv,
+    calculate_delta_n_deg,
+    calculate_delta_n_mu,
+    calculate_delta_n_nuc,
+    calculate_delta_n_rad,
+)
 from stellar_analyzer.core.pipeline import analyze_profile
 from stellar_analyzer.core.uncertainty import propagate_delta_n_rad_error
 
@@ -69,7 +77,7 @@ def _reference_record() -> dict:
         "reference_file": PAPER_REFERENCE.name,
         "reference_available": PAPER_REFERENCE.exists(),
         "reference_pages": 43,
-        "method_pages": "37-42",
+        "method_pages": "18-42",
         "objectives_pages": "3-4",
     }
     if PAPER_REFERENCE.exists():
@@ -88,9 +96,9 @@ This directory is generated from the legacy MESA-Web job by:
 .venv\\Scripts\\python.exe scripts\\build_paper_report_data.py
 ```
 
-The numbered folders follow the ten computational steps on pages 38-42 of the
-provided research-paper reference. `METHOD_TRACEABILITY.csv` maps each method to
-its evidence, and `MANIFEST.csv` records file sizes and SHA-256 checksums.
+The numbered folders follow all of Chapter 3 on PDF pages 18-42 of the provided
+research-paper reference. `METHOD_TRACEABILITY.csv` maps each method to its
+evidence, and `MANIFEST.csv` records file sizes and SHA-256 checksums.
 
 Important interpretation notes:
 
@@ -119,6 +127,8 @@ Important interpretation notes:
     contribution_rows: list[dict] = []
     residual_rows: list[dict] = []
     uncertainty_rows: list[dict] = []
+    internal_consistency_rows: list[dict] = []
+    radial_driver_rows: list[dict] = []
 
     for snapshot in snapshots:
         profile_number = int(snapshot["profile_number"])
@@ -171,7 +181,7 @@ Important interpretation notes:
                 "grad_rad": profile["grad_rad"],
             }
         )
-        profile_path = output / "02_preprocessing" / "profiles" / f"{star_id}.csv"
+        profile_path = output / "01_part1_polytropic_indices" / "profiles" / f"{star_id}.csv"
         profile_path.parent.mkdir(parents=True, exist_ok=True)
         profile_frame.to_csv(profile_path, index=False)
 
@@ -224,6 +234,58 @@ Important interpretation notes:
             }
         )
 
+        n_local = np.asarray(result["n_local"], dtype=float)
+        finite_local = np.isfinite(n_local)
+        mean_local = float(np.trapezoid(n_local[finite_local], profile["radius_fraction"][finite_local]))
+        internal_consistency_rows.append(
+            {
+                "star_id": star_id,
+                "n_global": result["global_fit"]["n_global"],
+                "radial_mean_n_local": mean_local,
+                "absolute_global_local_difference": abs(result["global_fit"]["n_global"] - mean_local),
+                "chi2_global": result["global_fit"]["reduced_chi2"],
+                "chi2_piecewise": result["piecewise_fit"]["chi2_piecewise"],
+                "piecewise_improves_fit": result["piecewise_fit"]["chi2_piecewise"] < result["global_fit"]["reduced_chi2"],
+            }
+        )
+
+        radius = profile["radius"]
+        radius_fraction = profile["radius_fraction"]
+        rho_profile = profile["rho"]
+        temperature_profile = profile["temperature"]
+        gas_pressure_profile = rho_profile * K_B_CGS * temperature_profile / (np.clip(profile["mu"], 0.1, None) * M_P_CGS)
+        beta_profile = np.clip(gas_pressure_profile / np.maximum(profile["pressure"], 1e-99), 1e-6, 1.0)
+        dlnrho_dr = np.gradient(np.log(np.clip(rho_profile, 1e-300, None)), radius, edge_order=2)
+        h_rho = np.clip(1.0 / np.maximum(np.abs(dlnrho_dr), 1e-30), 0.0, np.nanmax(radius)) / np.nanmax(radius)
+        tau_dyn = np.sqrt(np.maximum(radius**3 / (G_CGS * np.maximum(profile["mass_enclosed"], 1e-99)), 1e-30))
+        tau_conv = 2.0 * tau_dyn * np.clip(1.0 - radius_fraction, 0.05, 1.0)
+        radial_drivers = {
+            "delta_n_rad": calculate_delta_n_rad(beta_profile, temperature_profile, rho_profile),
+            "delta_n_mu": calculate_delta_n_mu(profile["mu"], radius_fraction, h_rho),
+            "delta_n_conv": calculate_delta_n_conv(profile["grad_rad"], profile["grad_ad"], tau_conv, tau_dyn),
+            "delta_n_deg": calculate_delta_n_deg(temperature_profile, rho_profile, X_fraction=0.70),
+        }
+        delta_n_nuc = calculate_delta_n_nuc(profile["epsilon"], rho_profile, radius)
+        radial_driver_rows.extend(
+            {
+                "star_id": star_id,
+                "radius_fraction": float(radius_fraction[index]),
+                "beta": float(beta_profile[index]),
+                "density_g_cm3": float(rho_profile[index]),
+                "temperature_k": float(temperature_profile[index]),
+                "mean_molecular_weight": float(profile["mu"][index]),
+                "grad_ad": float(profile["grad_ad"][index]),
+                "grad_rad": float(profile["grad_rad"][index]),
+                "epsilon_erg_g_s": float(profile["epsilon"][index]),
+                "delta_n_rad": float(radial_drivers["delta_n_rad"][index]),
+                "delta_n_mu": float(radial_drivers["delta_n_mu"][index]),
+                "delta_n_conv": float(radial_drivers["delta_n_conv"][index]),
+                "delta_n_nuc_global": float(delta_n_nuc),
+                "delta_n_deg": float(radial_drivers["delta_n_deg"][index]),
+            }
+            for index in range(len(radius_fraction))
+        )
+
         center = 0
         rho = float(profile["rho"][center])
         temperature = float(profile["temperature"][center])
@@ -249,19 +311,25 @@ Important interpretation notes:
             }
         )
 
-    _write_csv(output / "01_input" / "source_manifest.csv", source_rows)
-    _write_csv(output / "01_input" / "global_parameters.csv", global_rows)
-    _write_csv(output / "02_preprocessing" / "quality_checks.csv", quality_rows)
-    _write_csv(output / "03_polytropic_indices" / "global_fits.csv", global_fit_rows)
-    _write_csv(output / "03_polytropic_indices" / "piecewise_fits.csv", piecewise_rows)
-    _write_csv(output / "03_polytropic_indices" / "local_indices.csv", local_rows)
-    _write_csv(output / "04_deviation_drivers" / "deviation_summary.csv", deviation_rows)
-    _write_csv(output / "04_deviation_drivers" / "contribution_percentages.csv", contribution_rows)
-    _write_csv(output / "05_global_comparison" / "global_residuals.csv", residual_rows)
-    _write_csv(output / "06_uncertainty" / "radiation_error_propagation.csv", uncertainty_rows)
+    part1 = output / "01_part1_polytropic_indices"
+    part2 = output / "02_part2_physical_deviations"
+    part3 = output / "03_part3_global_comparison"
+    part4 = output / "04_part4_computational_implementation"
+    _write_csv(part1 / "source_manifest.csv", source_rows)
+    _write_csv(part1 / "global_parameters.csv", global_rows)
+    _write_csv(part1 / "quality_checks.csv", quality_rows)
+    _write_csv(part1 / "global_fits.csv", global_fit_rows)
+    _write_csv(part1 / "piecewise_fits.csv", piecewise_rows)
+    _write_csv(part1 / "local_indices.csv", local_rows)
+    _write_csv(part1 / "internal_consistency.csv", internal_consistency_rows)
+    _write_csv(part2 / "radial_deviation_profiles.csv", radial_driver_rows)
+    _write_csv(part2 / "deviation_summary.csv", deviation_rows)
+    _write_csv(part2 / "radiation_error_propagation.csv", uncertainty_rows)
+    _write_csv(part3 / "contribution_percentages.csv", contribution_rows)
+    _write_csv(part3 / "global_residuals.csv", residual_rows)
 
     _write_json(
-        output / "06_uncertainty" / "bootstrap_protocol.json",
+        part1 / "bootstrap_protocol.json",
         {
             "method": "resample radial-density pairs with replacement and refit n_global",
             "required_resamples": 1000,
@@ -272,7 +340,7 @@ Important interpretation notes:
         },
     )
     _write_json(
-        output / "07_machine_learning" / "training_readiness.json",
+        part4 / "machine_learning" / "training_readiness.json",
         {
             "pinn_trained": False,
             "available_models": len(snapshots),
@@ -285,7 +353,7 @@ Important interpretation notes:
         },
     )
     _write_json(
-        output / "08_storage" / "storage_evidence.json",
+        part4 / "storage" / "storage_evidence.json",
         {
             "database_models": ["stars", "profiles", "results"],
             "implementation": "stellar_analyzer.web.database",
@@ -295,7 +363,7 @@ Important interpretation notes:
         },
     )
     _write_json(
-        output / "09_validation" / "validation_summary.json",
+        part4 / "validation" / "validation_summary.json",
         {
             "profiles_processed": len(snapshots),
             "all_profiles_have_500_points": all(row["n_points_processed"] == 500 for row in global_rows),
@@ -311,7 +379,7 @@ Important interpretation notes:
         },
     )
     _write_json(
-        output / "10_monitoring" / "reproducibility.json",
+        part4 / "monitoring" / "reproducibility.json",
         {
             "builder": "scripts/build_paper_report_data.py",
             "source_job": _display_path(job),
@@ -322,16 +390,20 @@ Important interpretation notes:
     )
 
     traceability = [
-        {"paper_step": 1, "paper_pages": "38", "method": "Data input handling", "evidence": "01_input/global_parameters.csv; 01_input/source_manifest.csv"},
-        {"paper_step": 2, "paper_pages": "38-39", "method": "Read source and convert units", "evidence": "01_input/source_manifest.csv; 02_preprocessing/profiles/"},
-        {"paper_step": 3, "paper_pages": "39", "method": "Validate and resample", "evidence": "02_preprocessing/quality_checks.csv"},
-        {"paper_step": 4, "paper_pages": "39-40", "method": "Global, local, and zonal indices", "evidence": "03_polytropic_indices/"},
-        {"paper_step": 5, "paper_pages": "40", "method": "Five deviation drivers", "evidence": "04_deviation_drivers/"},
-        {"paper_step": 6, "paper_pages": "40-41", "method": "PINN training", "evidence": "07_machine_learning/training_readiness.json"},
-        {"paper_step": 7, "paper_pages": "41", "method": "Uncertainty", "evidence": "06_uncertainty/"},
-        {"paper_step": 8, "paper_pages": "41-42", "method": "Database and storage", "evidence": "08_storage/storage_evidence.json"},
-        {"paper_step": 9, "paper_pages": "42", "method": "Testing and validation", "evidence": "09_validation/validation_summary.json"},
-        {"paper_step": 10, "paper_pages": "42", "method": "Logging and monitoring", "evidence": "10_monitoring/reproducibility.json"},
+        {"chapter_part": "Part 1", "paper_pages": "18-20", "method": "Lane-Emden RK4 and global n, K, alpha fitting", "evidence": "01_part1_polytropic_indices/global_fits.csv"},
+        {"chapter_part": "Part 1", "paper_pages": "20-21", "method": "Local index with smoothing and center extrapolation", "evidence": "01_part1_polytropic_indices/local_indices.csv"},
+        {"chapter_part": "Part 1", "paper_pages": "21-22", "method": "Core, radiative, and convective piecewise fitting", "evidence": "01_part1_polytropic_indices/piecewise_fits.csv"},
+        {"chapter_part": "Part 1", "paper_pages": "22-23", "method": "Bootstrap and propagated uncertainty", "evidence": "01_part1_polytropic_indices/bootstrap_protocol.json; 02_part2_physical_deviations/radiation_error_propagation.csv"},
+        {"chapter_part": "Part 1", "paper_pages": "23-24", "method": "Internal consistency and chi-square comparison", "evidence": "01_part1_polytropic_indices/internal_consistency.csv"},
+        {"chapter_part": "Part 2", "paper_pages": "24-27", "method": "Radiation-pressure deviation", "evidence": "02_part2_physical_deviations/radial_deviation_profiles.csv"},
+        {"chapter_part": "Part 2", "paper_pages": "27-29", "method": "Composition-gradient deviation", "evidence": "02_part2_physical_deviations/radial_deviation_profiles.csv"},
+        {"chapter_part": "Part 2", "paper_pages": "29-30", "method": "Convective deviation", "evidence": "02_part2_physical_deviations/radial_deviation_profiles.csv"},
+        {"chapter_part": "Part 2", "paper_pages": "30-31", "method": "Nuclear-concentration deviation", "evidence": "02_part2_physical_deviations/deviation_summary.csv"},
+        {"chapter_part": "Part 2", "paper_pages": "31-35", "method": "Electron-degeneracy deviation", "evidence": "02_part2_physical_deviations/radial_deviation_profiles.csv"},
+        {"chapter_part": "Part 3", "paper_pages": "36-37", "method": "Global residual and relative contributions", "evidence": "03_part3_global_comparison/"},
+        {"chapter_part": "Part 4", "paper_pages": "37-40", "method": "Input, preprocessing, fitting, and driver modules", "evidence": "01_part1_polytropic_indices/; 02_part2_physical_deviations/"},
+        {"chapter_part": "Part 4", "paper_pages": "40-41", "method": "PINN architecture and training protocol", "evidence": "04_part4_computational_implementation/machine_learning/training_readiness.json"},
+        {"chapter_part": "Part 4", "paper_pages": "41-42", "method": "Storage, validation, and monitoring", "evidence": "04_part4_computational_implementation/"},
     ]
     _write_csv(output / "METHOD_TRACEABILITY.csv", traceability)
 

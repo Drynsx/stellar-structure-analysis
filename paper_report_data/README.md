@@ -6,9 +6,9 @@ This directory is generated from the legacy MESA-Web job by:
 .venv\Scripts\python.exe scripts\build_paper_report_data.py
 ```
 
-The numbered folders follow the ten computational steps on pages 38-42 of the
-provided research-paper reference. `METHOD_TRACEABILITY.csv` maps each method to
-its evidence, and `MANIFEST.csv` records file sizes and SHA-256 checksums.
+The numbered folders follow all of Chapter 3 on PDF pages 18-42 of the provided
+research-paper reference. `METHOD_TRACEABILITY.csv` maps each method to its
+evidence, and `MANIFEST.csv` records file sizes and SHA-256 checksums.
 
 Important interpretation notes:
 

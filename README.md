@@ -69,7 +69,8 @@ MESA-Web job, or an uploaded MESA/MIST/BaSTI profile.
 ## Research-paper evidence
 
 Reproducible data for the report is stored in `paper_report_data/`. Its numbered
-folders follow steps 1-10 on pages 38-42 of the provided paper reference.
+folders follow all four parts of Chapter 3 on PDF pages 18-42 of the provided
+paper reference.
 
 Regenerate the complete package from the raw MESA-Web job:
 
