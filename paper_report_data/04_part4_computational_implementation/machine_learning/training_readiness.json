@@ -9,11 +9,13 @@
     "validation_percent": 15,
     "test_percent": 15
   },
+  "training_dataset": "data/processed/pinn_dataset.npz",
+  "training_command": ".venv\\Scripts\\python.exe -m stellar_analyzer train-pinn --config configs\\pinn_training.json",
   "training_required": {
     "epochs": 300,
-    "batch_size": 32,
+    "batch_size": 4,
     "learning_rate": 0.001,
-    "patience": 20
+    "patience": 30
   },
   "blocking_reason": "One solar-mass MESA track is not sufficient for a generalizable PINN."
 }

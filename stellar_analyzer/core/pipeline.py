@@ -1,4 +1,4 @@
-"""End-to-end analysis pipeline used by the API and Streamlit app."""
+"""End-to-end scientific analysis pipeline used by the CLI and Python API."""
 
 from __future__ import annotations
 

@@ -9,6 +9,7 @@
 *.h5 binary
 *.mp4 binary
 *.pt binary
+*.npz binary
 
 # Preserve downloaded simulation records byte-for-byte for provenance hashes.
 data/raw/** binary

@@ -1,11 +1,15 @@
 {
-  "database_models": [
-    "stars",
-    "profiles",
-    "results"
+  "interface": "command-line",
+  "implementation": "stellar_analyzer.cli",
+  "local_array_formats": [
+    "CSV evidence package",
+    "compressed NPZ training tensors",
+    "PyTorch checkpoint"
   ],
-  "implementation": "stellar_analyzer.web.database",
-  "local_array_format": "CSV evidence package; HDF5 supported by loader",
-  "production_database": "PostgreSQL via SQLAlchemy",
-  "database_deployed": false
+  "input_formats": [
+    "MESA text profiles",
+    "delimited text",
+    "HDF5"
+  ],
+  "database_required": false
 }

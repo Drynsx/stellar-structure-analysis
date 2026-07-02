@@ -1,0 +1,111 @@
+"""Reproducible dataset preparation for stellar PINN training."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+
+from stellar_analyzer.core.data_loader import list_mesa_profiles, load_mesa_web_job
+from stellar_analyzer.core.pipeline import analyze_profile
+from stellar_analyzer.ml.pinn_model import DELTA_NAMES, build_input_features, transform_delta_n
+
+
+TARGET_SCHEMA = (
+    "theta=(rho/rho_center)^(1/n_global)",
+    "log10(rho/rho_center)/12",
+    "log10(pressure/pressure_center)/18",
+)
+
+
+def _portable_source_path(path: Path) -> str:
+    project_root = Path(__file__).resolve().parents[2]
+    try:
+        return path.resolve().relative_to(project_root).as_posix()
+    except ValueError:
+        return path.name
+
+
+def prepare_mesa_dataset(job_path: str | Path, output_path: str | Path, n_points: int = 500) -> dict:
+    """Convert every snapshot in a MESA-Web job into sequence tensors."""
+
+    job = Path(job_path)
+    snapshots = list_mesa_profiles(job)
+    if len(snapshots) < 3:
+        raise ValueError("At least three independent snapshots are required for train/validation/test splits")
+
+    features, profile_targets, delta_targets, n_indices = [], [], [], []
+    profile_numbers, model_numbers = [], []
+    for snapshot in snapshots:
+        model = load_mesa_web_job(job, snapshot["profile_number"])
+        result = analyze_profile(model, n_points=n_points)
+        profile = result["profile"]
+        inputs = result["input"]
+        radius = np.asarray(profile["radius_fraction"], dtype=np.float32)
+        shape = np.full(radius.shape, fill_value=1.0, dtype=np.float32)
+        feature = build_input_features(
+            inputs["mass"] * shape,
+            inputs["teff"] * shape,
+            inputs["metallicity"] * shape,
+            inputs["age"] * shape,
+            radius,
+        ).astype(np.float32)
+
+        rho = np.asarray(profile["rho"], dtype=np.float64)
+        pressure = np.asarray(profile["pressure"], dtype=np.float64)
+        n_global = max(float(result["global_fit"]["n_global"]), 0.1)
+        theta = np.power(np.clip(rho / rho[0], 0.0, 1.0), 1.0 / n_global)
+        target_profile = np.column_stack(
+            [
+                theta,
+                np.log10(np.clip(rho / rho[0], 1e-12, None)) / 12.0,
+                np.log10(np.clip(pressure / pressure[0], 1e-18, None)) / 18.0,
+            ]
+        ).astype(np.float32)
+        deltas = result["deviation_factors"]
+
+        features.append(feature)
+        profile_targets.append(target_profile)
+        delta_targets.append([deltas[key] for key in DELTA_NAMES])
+        n_indices.append(n_global)
+        profile_numbers.append(snapshot["profile_number"])
+        model_numbers.append(snapshot["model_number"])
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    metadata = {
+        "source_job": _portable_source_path(job),
+        "samples": len(snapshots),
+        "radial_points": n_points,
+        "feature_count": 15,
+        "target_schema": TARGET_SCHEMA,
+        "delta_names": DELTA_NAMES,
+        "delta_transform": "sign(x) * log1p(abs(x)); inverse: sign(y) * expm1(abs(y))",
+        "generalization_warning": "One stellar track is suitable for pipeline validation, not a production model.",
+    }
+    np.savez_compressed(
+        output,
+        features=np.stack(features),
+        profiles=np.stack(profile_targets),
+        delta_n=transform_delta_n(np.asarray(delta_targets, dtype=np.float32)).astype(np.float32),
+        delta_n_raw=np.asarray(delta_targets, dtype=np.float32),
+        n_index=np.asarray(n_indices, dtype=np.float32),
+        profile_number=np.asarray(profile_numbers, dtype=np.int32),
+        model_number=np.asarray(model_numbers, dtype=np.int32),
+        metadata=np.asarray(json.dumps(metadata)),
+    )
+    return {**metadata, "output": str(output), "shape": list(np.stack(features).shape)}
+
+
+def inspect_dataset(path: str | Path) -> dict:
+    """Return safe metadata and shapes without loading pickled objects."""
+
+    with np.load(path, allow_pickle=False) as data:
+        metadata = json.loads(str(data["metadata"]))
+        return {
+            **metadata,
+            "features_shape": list(data["features"].shape),
+            "profiles_shape": list(data["profiles"].shape),
+            "delta_shape": list(data["delta_n"].shape),
+        }

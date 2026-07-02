@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stellar-structure-analyzer"
+version = "0.2.0"
+description = "CLI for stellar polytropic analysis and PINN training"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "pandas>=2.0",
+  "h5py>=3.8",
+  "torch>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+stellar-analyzer = "stellar_analyzer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["stellar_analyzer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

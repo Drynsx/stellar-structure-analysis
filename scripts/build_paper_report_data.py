@@ -348,18 +348,20 @@ Important interpretation notes:
             "paper_target_models": 50000,
             "architecture_implemented": True,
             "split_required": {"training_percent": 70, "validation_percent": 15, "test_percent": 15},
-            "training_required": {"epochs": 300, "batch_size": 32, "learning_rate": 0.001, "patience": 20},
+            "training_dataset": "data/processed/pinn_dataset.npz",
+            "training_command": ".venv\\Scripts\\python.exe -m stellar_analyzer train-pinn --config configs\\pinn_training.json",
+            "training_required": {"epochs": 300, "batch_size": 4, "learning_rate": 0.001, "patience": 30},
             "blocking_reason": "One solar-mass MESA track is not sufficient for a generalizable PINN.",
         },
     )
     _write_json(
         part4 / "storage" / "storage_evidence.json",
         {
-            "database_models": ["stars", "profiles", "results"],
-            "implementation": "stellar_analyzer.web.database",
-            "local_array_format": "CSV evidence package; HDF5 supported by loader",
-            "production_database": "PostgreSQL via SQLAlchemy",
-            "database_deployed": False,
+            "interface": "command-line",
+            "implementation": "stellar_analyzer.cli",
+            "local_array_formats": ["CSV evidence package", "compressed NPZ training tensors", "PyTorch checkpoint"],
+            "input_formats": ["MESA text profiles", "delimited text", "HDF5"],
+            "database_required": False,
         },
     )
     _write_json(

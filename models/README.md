@@ -1,8 +1,15 @@
 # Model Checkpoints
 
-No trained production PINN checkpoint is currently available.
+No trained production PINN checkpoint is committed.
 
-The architecture and training loop are implemented in
-`stellar_analyzer/ml/pinn_model.py`. A checkpoint must only be added here after
-training on a sufficiently diverse stellar grid and recording train,
-validation, and test metrics in `paper_report_data/07_machine_learning/`.
+Prepare data and train with:
+
+```powershell
+.venv\Scripts\python.exe -m stellar_analyzer prepare-pinn
+.venv\Scripts\python.exe -m stellar_analyzer train-pinn --config configs\pinn_training.json
+```
+
+Checkpoints include the model state, architecture, training configuration,
+loss history, split sizes, validation loss, and held-out test loss. The bundled
+single-track dataset validates the pipeline only; production training requires
+a broad grid of independent stellar tracks.
