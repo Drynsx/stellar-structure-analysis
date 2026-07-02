@@ -5,8 +5,10 @@ import numpy as np
 import torch
 
 from stellar_analyzer.cli import build_parser, main
-from stellar_analyzer.ml.pinn_model import StellarPINN, build_differentiable_features, physics_residual_loss
-from stellar_analyzer.ml.training_data import inspect_dataset
+from stellar_analyzer.ml.pinn_model import (
+    Hdf5StellarDataset, StellarPINN, build_differentiable_features, physics_residual_loss,
+)
+from stellar_analyzer.ml.training_data import inspect_dataset, prepare_hdf5_grid_dataset
 
 
 ROOT = Path(__file__).parents[1]
@@ -18,6 +20,8 @@ def test_cli_parses_mesa_analysis_and_training_commands():
     training = parser.parse_args(["train-pinn", "--epochs", "2", "--device", "cpu"])
     assert analysis.profile == 8
     assert training.epochs == 2
+    validation = parser.parse_args(["validate-pinn", "--profile", "2"])
+    assert validation.profile == 2
 
 
 def test_cli_analyzes_mesa_to_json(tmp_path):
@@ -68,3 +72,24 @@ def test_prepared_dataset_has_expected_schema():
         assert np.isfinite(data["profiles"]).all()
         assert np.isfinite(data["delta_n"]).all()
         assert "delta_n_raw" in data
+
+
+def test_hdf5_profile_grid_is_prepared_and_read_lazily(tmp_path):
+    import h5py
+
+    source = tmp_path / "profiles.h5"
+    radius = np.linspace(0.001, 1.0, 20)
+    with h5py.File(source, "w") as handle:
+        for index in range(3):
+            group = handle.create_group(f"model_{index}")
+            group.attrs.update({"mass": 1.0, "teff": 5778.0, "metallicity": 0.0, "age": 4.6})
+            group["radius"] = radius
+            group["rho"] = 100.0 * (1.01 - radius) ** 2 + 1e-5
+            group["pressure"] = 1e17 * (1.01 - radius) ** 3 + 1e8
+            group["temperature"] = 1e7 * (1.01 - radius) + 5778.0
+    output = tmp_path / "training.h5"
+    result = prepare_hdf5_grid_dataset(source, output, n_points=32)
+    dataset = Hdf5StellarDataset(output)
+    assert result["samples"] == len(dataset) == 3
+    assert dataset[0]["features"].shape == (32, 15)
+    assert inspect_dataset(output)["features_shape"] == [3, 32, 15]

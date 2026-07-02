@@ -1,6 +1,10 @@
 from stellar_analyzer import analyze_star, batch_analyze
 from stellar_analyzer.core.data_loader import list_mesa_profiles, load_mesa_web_job
+from stellar_analyzer.core.deviation_drivers import calculate_delta_n_conv
+from stellar_analyzer.core.pipeline import analyze_mesa_job
 from stellar_analyzer.core.preprocess import preprocess_profile
+
+import numpy as np
 
 import pandas as pd
 from pathlib import Path
@@ -43,3 +47,19 @@ def test_legacy_mesa_web_job_loads_and_normalizes():
     assert len(prepared.profile["radius"]) == 500
     assert prepared.profile["radius"][0] < prepared.profile["radius"][-1]
     assert prepared.profile["mass_enclosed"][-1] > 1e33
+
+
+def test_convection_correction_is_bounded_for_extreme_surface_gradients():
+    correction = calculate_delta_n_conv(
+        np.array([0.5, 1e9]), np.array([0.4, 0.4]), np.array([2.0, 1e9]), np.ones(2)
+    )
+    assert np.all(np.isfinite(correction))
+    assert correction.max() <= 12.0
+
+
+def test_young_mesa_profile_has_reasonable_residual_and_hydrostatic_check():
+    job = Path(__file__).parents[1] / "data" / "raw" / "MESA-Web_Job_03242664908"
+    result = analyze_mesa_job(job, profile_number=2)
+    assert -5.0 <= result["anomaly_score"] <= 5.0
+    assert result["deviation_factors"]["delta_n_conv"] <= 12.0
+    assert result["preprocessing"]["hydrostatic_ok"] is True

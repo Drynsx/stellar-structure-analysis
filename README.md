@@ -85,7 +85,21 @@ After training:
 
 ```powershell
 .\stellar predict --mass 1 --teff 5778 --age 4.6 --output outputs\sun_pinn.json
+.\stellar validate-pinn --profile 8
 ```
+
+For a large radial-profile HDF5 grid, preparation is streamed into a chunked
+dataset and training reads it lazily:
+
+```powershell
+.\stellar prepare-pinn --grid data\raw\mist_grid\profiles.h5
+.\stellar train-pinn --data data\processed\pinn_grid.h5 --config configs\pinn_training.json
+```
+
+The [official MIST packaged grids](https://mist.science/model_grids.html) are
+evolutionary-track tables, not internal radial profiles. This model requires a
+structure grid containing radius, density, and pressure for every sample; see
+`data/raw/mist_grid/README.md`.
 
 The bundled data contains one solar-mass evolutionary track. It is enough to
 validate the training machinery, but not to claim a generalizable production

@@ -191,12 +191,16 @@ def analyze_star(params: dict[str, Any] | StarRequest, use_pinn: bool = True) ->
 def _request_from_model(model: StellarModel, overrides: dict[str, Any] | None = None) -> StarRequest:
     metadata = model.metadata
     initial_z = float(metadata.get("initial_z", 0.02))
+    metallicity = metadata.get("metallicity")
+    if metallicity is None:
+        metallicity = np.log10(max(initial_z, 1e-12) / 0.02)
+    age = float(metadata.get("age", float(metadata.get("star_age", 0.0)) / 1e9))
     inferred = {
         "name": f"MESA {metadata.get('source_profile', 'profile')}",
-        "mass": float(metadata.get("star_mass", metadata.get("initial_mass", 1.0))),
+        "mass": float(metadata.get("star_mass", metadata.get("initial_mass", metadata.get("mass", 1.0)))),
         "teff": float(metadata.get("teff", 5778.0)),
-        "metallicity": float(np.log10(max(initial_z, 1e-12) / 0.02)),
-        "age": float(metadata.get("star_age", 0.0)) / 1e9,
+        "metallicity": float(metallicity),
+        "age": age,
     }
     inferred.update(overrides or {})
     return StarRequest(**inferred)

@@ -139,6 +139,28 @@ def _canonicalize_frame(df: pd.DataFrame) -> dict[str, np.ndarray]:
     return arrays
 
 
+def _canonicalize_mapping(values: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Canonicalize named arrays without forcing equal lengths through pandas."""
+
+    arrays: dict[str, np.ndarray] = {}
+    normalized = {_normalize_name(name): np.asarray(value) for name, value in values.items()}
+    for canonical, aliases in CANONICAL_COLUMNS.items():
+        for alias in aliases:
+            key = _normalize_name(alias)
+            if key in normalized:
+                data = np.asarray(normalized[key], dtype=float)
+                if canonical in {"rho", "pressure", "temperature"} and key.startswith("log"):
+                    data = np.power(10.0, data)
+                arrays[canonical] = data
+                break
+    if "radius" not in arrays and "radius_fraction" in arrays:
+        arrays["radius"] = arrays["radius_fraction"]
+    if "radius_fraction" not in arrays and "radius" in arrays:
+        radius = arrays["radius"]
+        arrays["radius_fraction"] = radius / max(float(np.nanmax(np.abs(radius))), 1e-30)
+    return arrays
+
+
 def _read_ascii(path: Path) -> StellarModel:
     read_errors: list[str] = []
     for kwargs in (
@@ -158,35 +180,71 @@ def _read_ascii(path: Path) -> StellarModel:
     raise ValueError(f"Could not parse stellar profile text file {path}: {' | '.join(read_errors)}")
 
 
-def _read_hdf5(path: Path) -> StellarModel:
+def iter_hdf5_profiles(path: str | Path, limit: int | None = None):
+    """Yield radial profiles from group-based or row-major HDF5 grids lazily."""
+
     try:
         import h5py
     except ImportError as exc:  # pragma: no cover - dependency is declared.
         raise ImportError("h5py is required to load HDF5 stellar models") from exc
 
-    raw: dict[str, np.ndarray] = {}
-    metadata: dict[str, Any] = {"format": "hdf5"}
-
-    def visit(name: str, obj: Any) -> None:
-        if hasattr(obj, "attrs"):
-            for key, value in obj.attrs.items():
-                if np.isscalar(value):
-                    metadata[_normalize_name(key)] = value.item() if hasattr(value, "item") else value
-        if hasattr(obj, "shape") and obj.shape is not None:
-            data = np.asarray(obj)
-            if data.ndim == 1 and np.issubdtype(data.dtype, np.number):
-                raw[_normalize_name(Path(name).name)] = data.astype(float)
-
+    path = Path(path)
+    yielded = 0
     with h5py.File(path, "r") as handle:
-        handle.visititems(visit)
-        for key, value in handle.attrs.items():
-            metadata[_normalize_name(key)] = value.item() if hasattr(value, "item") else value
+        root_metadata = {
+            _normalize_name(key): value.item() if hasattr(value, "item") else value
+            for key, value in handle.attrs.items() if np.isscalar(value)
+        }
+        groups = []
+        handle.visititems(lambda name, obj: groups.append((name, obj)) if isinstance(obj, h5py.Group) else None)
+        for name, group in groups:
+            raw = {key: np.asarray(value) for key, value in group.items()
+                   if isinstance(value, h5py.Dataset) and value.ndim == 1 and np.issubdtype(value.dtype, np.number)}
+            arrays = _canonicalize_mapping(raw)
+            if {"radius", "rho", "pressure"}.issubset(arrays):
+                metadata = dict(root_metadata)
+                metadata.update({_normalize_name(key): value.item() if hasattr(value, "item") else value
+                                 for key, value in group.attrs.items() if np.isscalar(value)})
+                metadata.update({"format": "hdf5-grid", "profile_key": name})
+                yield StellarModel(arrays=arrays, metadata=metadata, source_path=f"{path}::{name}")
+                yielded += 1
+                if limit is not None and yielded >= limit:
+                    return
 
-    df = pd.DataFrame(raw)
-    arrays = _canonicalize_frame(df)
-    if not arrays:
-        raise ValueError(f"No recognizable 1-D stellar profile datasets found in {path}")
-    return StellarModel(arrays=arrays, metadata=metadata, source_path=str(path))
+        datasets_2d = {key: value for key, value in handle.items()
+                       if isinstance(value, h5py.Dataset) and value.ndim == 2 and np.issubdtype(value.dtype, np.number)}
+        canonical_2d = _canonicalize_mapping({key: value[0] for key, value in datasets_2d.items()}) if datasets_2d else {}
+        if {"radius", "rho", "pressure"}.issubset(canonical_2d):
+            row_count = min(value.shape[0] for value in datasets_2d.values())
+            scalar_columns = {key: value for key, value in handle.items()
+                              if isinstance(value, h5py.Dataset) and value.ndim == 1 and len(value) == row_count}
+            for index in range(row_count):
+                arrays = _canonicalize_mapping({key: value[index] for key, value in datasets_2d.items()})
+                metadata = dict(root_metadata)
+                metadata.update({_normalize_name(key): value[index].item() for key, value in scalar_columns.items()
+                                 if np.isscalar(value[index])})
+                metadata.update({"format": "hdf5-grid", "profile_index": index})
+                yield StellarModel(arrays=arrays, metadata=metadata, source_path=f"{path}::row={index}")
+                yielded += 1
+                if limit is not None and yielded >= limit:
+                    return
+
+        if yielded == 0:
+            raw = {key: np.asarray(value) for key, value in handle.items()
+                   if isinstance(value, h5py.Dataset) and value.ndim == 1 and np.issubdtype(value.dtype, np.number)}
+            arrays = _canonicalize_mapping(raw)
+            if {"radius", "rho", "pressure"}.issubset(arrays):
+                yield StellarModel(arrays=arrays, metadata={**root_metadata, "format": "hdf5"}, source_path=str(path))
+                yielded += 1
+
+    if yielded == 0:
+        raise ValueError(
+            f"No radial profiles found in {path}; profiles require radius, density, and pressure arrays"
+        )
+
+
+def _read_hdf5(path: Path) -> StellarModel:
+    return next(iter_hdf5_profiles(path, limit=1))
 
 
 def load_stellar_model(file_path: str | Path) -> StellarModel:

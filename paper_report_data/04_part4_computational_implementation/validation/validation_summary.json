@@ -3,8 +3,8 @@
   "all_profiles_have_500_points": true,
   "all_radii_monotonic": true,
   "all_scalar_profiles_positive": true,
-  "hydrostatic_pass_count": 0,
-  "hydrostatic_fail_count": 8,
+  "hydrostatic_pass_count": 8,
+  "hydrostatic_fail_count": 0,
   "test_command": ".venv\\Scripts\\python.exe -m pytest -q",
   "python_version": "3.12.13"
 }

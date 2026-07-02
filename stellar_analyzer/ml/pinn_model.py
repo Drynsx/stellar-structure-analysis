@@ -140,6 +140,40 @@ class NpzStellarDataset(Dataset):
                 "delta_n": self.delta_n[index], "n_index": self.n_index[index]}
 
 
+class Hdf5StellarDataset(Dataset):
+    """Lazy dataset for grids too large to fit in memory."""
+
+    def __init__(self, path: str | Path):
+        _require_torch()
+        import h5py
+        self.path = str(Path(path))
+        self._handle = None
+        with h5py.File(self.path, "r") as handle:
+            self.length = len(handle["features"])
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        import h5py
+        if self._handle is None:
+            self._handle = h5py.File(self.path, "r")
+        return {key: torch.from_numpy(np.asarray(self._handle[key][index], dtype=np.float32))
+                for key in ("features", "profiles", "delta_n", "n_index")}
+
+    def __del__(self):
+        handle = getattr(self, "_handle", None)
+        if handle is not None:
+            handle.close()
+
+
+def load_training_dataset(path: str | Path):
+    path = Path(path)
+    if path.suffix.lower() in {".h5", ".hdf5", ".hdf"}:
+        return Hdf5StellarDataset(path)
+    return NpzStellarDataset(path)
+
+
 def physics_residual_loss(radius, theta, n_index):
     """Lane-Emden residual using model-predicted theta and the radial feature."""
 

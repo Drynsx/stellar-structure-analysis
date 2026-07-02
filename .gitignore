@@ -9,3 +9,7 @@ __pycache__/
 tmp/
 models/*.pt
 !models/README.md
+data/raw/mist_grid/*.h5
+data/raw/mist_grid/*.hdf5
+data/raw/mist_grid/*.tar.gz
+data/processed/pinn_grid.h5

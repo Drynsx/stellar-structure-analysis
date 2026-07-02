@@ -47,9 +47,16 @@ def calculate_delta_n_conv(
     tau_conv: np.ndarray | float,
     tau_dyn: np.ndarray | float,
 ) -> np.ndarray:
-    delta = np.asarray(grad, dtype=float) - np.asarray(grad_ad, dtype=float)
-    ratio = np.asarray(tau_conv, dtype=float) / np.maximum(np.asarray(tau_dyn, dtype=float), 1e-30)
-    return 1.2 * np.maximum(delta, 0.0) * ratio
+    # Surface cells in young models can carry enormous formal radiative
+    # gradients. They are outside the calibrated range of this perturbative
+    # correction and otherwise dominate a mass-weighted global residual.
+    delta = np.clip(np.asarray(grad, dtype=float) - np.asarray(grad_ad, dtype=float), 0.0, 1.0)
+    ratio = np.clip(
+        np.asarray(tau_conv, dtype=float) / np.maximum(np.asarray(tau_dyn, dtype=float), 1e-30),
+        0.0,
+        10.0,
+    )
+    return 1.2 * delta * ratio
 
 
 def calculate_delta_n_nuc(epsilon_array: np.ndarray, rho_array: np.ndarray, r_array: np.ndarray) -> float:

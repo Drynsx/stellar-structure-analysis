@@ -88,9 +88,13 @@ def _run_batch(args) -> None:
 
 
 def _run_prepare(args) -> None:
-    from stellar_analyzer.ml.training_data import prepare_mesa_dataset
+    from stellar_analyzer.ml.training_data import prepare_hdf5_grid_dataset, prepare_mesa_dataset
 
-    _write_json(prepare_mesa_dataset(args.job, args.output, args.points))
+    if args.grid:
+        output = args.output or ROOT / "data" / "processed" / "pinn_grid.h5"
+        _write_json(prepare_hdf5_grid_dataset(args.grid, output, args.points, args.limit))
+    else:
+        _write_json(prepare_mesa_dataset(args.job, args.output or DEFAULT_DATASET, args.points))
 
 
 def _training_config(args):
@@ -112,10 +116,10 @@ def _training_config(args):
 
 
 def _run_train(args) -> None:
-    from stellar_analyzer.ml.pinn_model import NpzStellarDataset, train_pinn
+    from stellar_analyzer.ml.pinn_model import load_training_dataset, train_pinn
 
     config = _training_config(args)
-    _write_json(train_pinn(NpzStellarDataset(args.data), config=config))
+    _write_json(train_pinn(load_training_dataset(args.data), config=config))
 
 
 def _run_dataset_info(args) -> None:
@@ -145,6 +149,36 @@ def _run_predict(args) -> None:
         "delta_n": dict(zip(DELTA_NAMES, inverse_transform_delta_n(prediction["delta_n"][0]).tolist())),
         "profile_schema": ["theta", "scaled_log_rho", "scaled_log_pressure"],
         "profiles": prediction["profiles"][0].tolist(),
+    }
+    _write_json(value, args.output)
+
+
+def _run_validate(args) -> None:
+    import torch
+    from stellar_analyzer.core.data_loader import load_mesa_web_job
+    from stellar_analyzer.ml.pinn_model import DELTA_NAMES, inverse_transform_delta_n, load_pinn_weights
+    from stellar_analyzer.ml.training_data import build_model_tensors
+
+    model_data = load_mesa_web_job(args.job, args.profile)
+    features, expected_profiles, _, expected_delta, _ = build_model_tensors(model_data, args.points)
+    model = load_pinn_weights(args.checkpoint)
+    with torch.no_grad():
+        prediction = model(torch.from_numpy(features).unsqueeze(0))
+    predicted_delta = inverse_transform_delta_n(prediction["delta_n"][0]).numpy()
+    predicted_profiles = prediction["profiles"][0].numpy()
+    value = {
+        "checkpoint": str(args.checkpoint),
+        "profile": args.profile,
+        "delta_mae": float(np.mean(np.abs(predicted_delta - expected_delta))),
+        "profile_rmse": {
+            name: float(np.sqrt(np.mean((predicted_profiles[:, index] - expected_profiles[:, index]) ** 2)))
+            for index, name in enumerate(("theta", "scaled_log_rho", "scaled_log_pressure"))
+        },
+        "deviations": {
+            name: {"analytical": float(expected_delta[index]), "pinn": float(predicted_delta[index]),
+                   "absolute_error": float(abs(predicted_delta[index] - expected_delta[index]))}
+            for index, name in enumerate(DELTA_NAMES)
+        },
     }
     _write_json(value, args.output)
 
@@ -196,8 +230,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     prepare = commands.add_parser("prepare-pinn", help="build a PINN dataset from a MESA-Web job")
     prepare.add_argument("--job", type=Path, default=DEFAULT_JOB)
-    prepare.add_argument("--output", type=Path, default=DEFAULT_DATASET)
+    prepare.add_argument("--grid", type=Path, help="radial-profile HDF5 grid (overrides --job)")
+    prepare.add_argument("--output", type=Path)
     prepare.add_argument("--points", type=int, default=500)
+    prepare.add_argument("--limit", type=int, help="prepare only the first N HDF5 profiles")
     prepare.set_defaults(func=_run_prepare)
 
     info = commands.add_parser("dataset-info", help="inspect a prepared PINN dataset")
@@ -226,6 +262,14 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--points", type=int, default=500)
     predict.add_argument("--output")
     predict.set_defaults(func=_run_predict)
+
+    validate = commands.add_parser("validate-pinn", help="compare a PINN checkpoint with analytical fits")
+    validate.add_argument("--checkpoint", type=Path, default=ROOT / "models" / "pinn_checkpoint.pt")
+    validate.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    validate.add_argument("--profile", type=int, default=8)
+    validate.add_argument("--points", type=int, default=500)
+    validate.add_argument("--output")
+    validate.set_defaults(func=_run_validate)
     return parser
 
 

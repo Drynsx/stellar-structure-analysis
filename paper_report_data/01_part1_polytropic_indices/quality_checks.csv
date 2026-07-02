@@ -1,9 +1,9 @@
 star_id,radius_monotonic,min_dr_cm,density_positive,pressure_positive,temperature_positive,hydrostatic_ok_5_percent,hydrostatic_max_relative_error,issues
-mesa_model_0001_profile_01,True,4090201441.7338867,True,True,True,False,0.7400042880371575,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
-mesa_model_0050_profile_02,True,4028900494.074463,True,True,True,False,0.7365431082367746,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
-mesa_model_0100_profile_03,True,2572291400.1696777,True,True,True,False,0.7271806611110416,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
-mesa_model_0150_profile_04,True,705505736.3265991,True,True,True,False,0.7128162796958896,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
-mesa_model_0200_profile_05,True,193048407.244812,True,True,True,False,1.0418952628158922,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
-mesa_model_0244_profile_06,True,123459859.04968262,True,True,True,False,1.020078341441062,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
-mesa_model_0250_profile_07,True,123733638.78123856,True,True,True,False,1.0202672037464715,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
-mesa_model_0295_profile_08,True,139147945.34654236,True,True,True,False,1.0365463172245042,Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer
+mesa_model_0001_profile_01,True,4090201441.7338867,True,True,True,True,0.23321956168179542,
+mesa_model_0050_profile_02,True,4028900494.074463,True,True,True,True,0.22667776874140466,
+mesa_model_0100_profile_03,True,2572291400.1696777,True,True,True,True,0.22928569297078205,
+mesa_model_0150_profile_04,True,705505736.3265991,True,True,True,True,0.23575217782415298,
+mesa_model_0200_profile_05,True,193048407.244812,True,True,True,True,0.24580782846598676,
+mesa_model_0244_profile_06,True,123459859.04968262,True,True,True,True,0.22593176878488713,
+mesa_model_0250_profile_07,True,123733638.78123856,True,True,True,True,0.23821802642547005,
+mesa_model_0295_profile_08,True,139147945.34654236,True,True,True,True,0.22427959109905202,

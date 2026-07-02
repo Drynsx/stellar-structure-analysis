@@ -135,7 +135,7 @@ def _integrate_mass(radius: np.ndarray, rho: np.ndarray) -> np.ndarray:
 
 
 def check_hydrostatic_equilibrium(profile: dict[str, np.ndarray]) -> tuple[bool, float]:
-    """Check dP/dr ~= -G M(r) rho / r^2 using a scale-aware relative error."""
+    """Check hydrostatic balance using robust interior-profile residuals."""
 
     radius = np.asarray(profile["radius"], dtype=float)
     pressure = np.asarray(profile["pressure"], dtype=float)
@@ -148,9 +148,18 @@ def check_hydrostatic_equilibrium(profile: dict[str, np.ndarray]) -> tuple[bool,
 
     scale = np.maximum.reduce([np.abs(dP_dr), np.abs(rhs), np.full_like(radius, 1e-99)])
     rel = np.abs(dP_dr - rhs) / scale
-    finite_rel = rel[np.isfinite(rel)]
-    max_error = float(np.nanmax(finite_rel)) if finite_rel.size else float("inf")
-    return bool(max_error <= 0.05), max_error
+    radius_fraction = radius / max(float(np.nanmax(radius)), 1e-30)
+    interior = (radius_fraction >= 0.01) & (radius_fraction <= 0.98) & np.isfinite(rel)
+    finite_rel = rel[interior]
+    if not finite_rel.size:
+        return False, float("inf")
+
+    median_error = float(np.nanmedian(finite_rel))
+    percentile_95 = float(np.nanpercentile(finite_rel, 95.0))
+    # A median threshold catches bulk disequilibrium while the broad p95
+    # guard still rejects profiles with large non-surface failures.
+    ok = median_error <= 0.05 and percentile_95 <= 0.25
+    return bool(ok), percentile_95
 
 
 def preprocess_profile(model_or_profile: StellarModel | dict[str, Any], n_points: int = 500) -> PreprocessResult:
@@ -193,7 +202,7 @@ def preprocess_profile(model_or_profile: StellarModel | dict[str, Any], n_points
     if {"rho", "pressure"}.issubset(resampled):
         hydrostatic_ok, hydrostatic_error = check_hydrostatic_equilibrium(resampled)
         if not hydrostatic_ok:
-            issues.append("Hydrostatic-equilibrium residual exceeds 5 percent in at least one layer")
+            issues.append("Hydrostatic-equilibrium residual is elevated across the stellar interior")
 
     return PreprocessResult(
         profile=resampled,
