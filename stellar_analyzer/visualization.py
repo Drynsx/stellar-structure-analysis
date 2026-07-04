@@ -1,4 +1,4 @@
-"""Terminal and PNG plots for analyzed stellar profiles."""
+"""Desktop, terminal, and exported plots for analyzed stellar profiles."""
 
 from __future__ import annotations
 
@@ -53,15 +53,89 @@ def terminal_plot(result: dict[str, Any], field: str, width: int = 68, height: i
 
 
 def save_plot(result: dict[str, Any], field: str, destination: Path) -> None:
-    import matplotlib.pyplot as plt
-
-    x, y, title, unit, _ = _series(result, field)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    plt.style.use("seaborn-v0_8-whitegrid")
-    figure, axis = plt.subplots(figsize=(8, 4.8), constrained_layout=True)
-    axis.plot(x, y, color="#D97757", linewidth=2.2)
-    axis.set(title=title, xlabel="Normalized radius (r/R)", ylabel=unit)
-    axis.spines[["top", "right"]].set_visible(False)
+    figure = create_figure(result, field)
     figure.savefig(destination, dpi=180)
+    import matplotlib.pyplot as plt
     plt.close(figure)
     success(f"Graph saved to {destination}")
+
+
+def create_figure(result: dict[str, Any], field: str):
+    """Create the publication-style figure shared by the GUI and PNG export."""
+    from matplotlib.figure import Figure
+    from matplotlib.ticker import AutoMinorLocator
+
+    x, y, title, unit, _ = _series(result, field)
+    if len(x) < 2:
+        raise ValueError(f"Not enough valid values to plot {field}")
+
+    figure = Figure(figsize=(9.6, 5.8), dpi=100, facecolor="#F8FAFC", constrained_layout=True)
+    axis = figure.add_subplot(111)
+    axis.set_facecolor("#FFFFFF")
+    axis.plot(x, y, color="#2563EB", linewidth=2.35, solid_capstyle="round", label=title)
+    axis.fill_between(x, y, float(np.nanmin(y)), color="#2563EB", alpha=0.07)
+    axis.set_title(title, loc="left", fontsize=17, fontweight="semibold", color="#0F172A", pad=18)
+    axis.text(0, 1.015, "Radial stellar structure profile", transform=axis.transAxes,
+              fontsize=9.5, color="#64748B", va="bottom")
+    axis.set_xlabel("Normalized radius  r / R", color="#334155", labelpad=10)
+    axis.set_ylabel(unit, color="#334155", labelpad=10)
+    axis.set_xlim(0, 1)
+    axis.grid(True, which="major", color="#CBD5E1", linewidth=0.8, alpha=0.65)
+    axis.grid(True, which="minor", color="#E2E8F0", linewidth=0.5, alpha=0.45)
+    axis.xaxis.set_minor_locator(AutoMinorLocator(2))
+    axis.yaxis.set_minor_locator(AutoMinorLocator(2))
+    axis.tick_params(colors="#475569", labelsize=9)
+    axis.spines[["top", "right"]].set_visible(False)
+    axis.spines[["left", "bottom"]].set_color("#94A3B8")
+    axis.legend(loc="best", frameon=False, fontsize=9)
+    return figure
+
+
+def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> None:
+    """Open a native desktop window with one professional tab per graph."""
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+    except ImportError as exc:
+        raise RuntimeError("The desktop graph window requires Tkinter and Matplotlib.") from exc
+
+    root = tk.Tk()
+    root.title("Stellar Analyzer — Radial Profiles")
+    root.geometry("1100x720")
+    root.minsize(820, 560)
+    root.configure(bg="#F1F5F9")
+
+    style = ttk.Style(root)
+    if "vista" in style.theme_names():
+        style.theme_use("vista")
+    style.configure("Graph.TNotebook", background="#F1F5F9", borderwidth=0)
+    style.configure("Graph.TNotebook.Tab", padding=(18, 9), font=("Segoe UI", 10))
+
+    header = tk.Frame(root, bg="#0F172A", padx=24, pady=16)
+    header.pack(fill="x")
+    tk.Label(header, text="Stellar structure", bg="#0F172A", fg="#F8FAFC",
+             font=("Segoe UI Semibold", 18)).pack(side="left")
+    source = result.get("input", {}).get("name", "MESA profile")
+    profile_number = result.get("source", {}).get("profile_number")
+    detail = source + (f"  •  Profile {profile_number}" if profile_number is not None else "")
+    tk.Label(header, text=detail, bg="#0F172A", fg="#94A3B8",
+             font=("Segoe UI", 10)).pack(side="right", pady=(5, 0))
+
+    notebook = ttk.Notebook(root, style="Graph.TNotebook")
+    notebook.pack(fill="both", expand=True, padx=14, pady=14)
+    tabs: dict[str, tk.Frame] = {}
+    for field, (_, title, _, _) in PLOT_FIELDS.items():
+        tab = tk.Frame(notebook, bg="#F8FAFC")
+        notebook.add(tab, text=title)
+        figure = create_figure(result, field)
+        canvas = FigureCanvasTkAgg(figure, master=tab)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=(8, 0))
+        toolbar_frame = tk.Frame(tab, bg="#F8FAFC")
+        toolbar_frame.pack(fill="x", padx=8, pady=(0, 8))
+        NavigationToolbar2Tk(canvas, toolbar_frame, pack_toolbar=False).pack(side="left")
+        tabs[field] = tab
+    notebook.select(tabs[initial_field])
+    root.mainloop()

@@ -19,6 +19,49 @@ DEFAULT_JOB = ROOT / "data" / "raw" / "MESA-Web_Job_03242664908"
 DEFAULT_DATASET = ROOT / "data" / "processed" / "pinn_dataset.npz"
 
 
+def _ask(prompt: str, *, default: str | None = None, choices: tuple[str, ...] = ()) -> str:
+    """Prompt until the user supplies a usable value."""
+    suffix = f" [{default}]" if default is not None else ""
+    if choices:
+        suffix += f" ({'/'.join(choices)})"
+    while True:
+        value = input(f"{prompt}{suffix}: ").strip()
+        value = value or default or ""
+        if value and (not choices or value in choices):
+            return value
+        console.print(f"[warning]Enter {'one of ' + ', '.join(choices) if choices else 'a value'}.[/warning]")
+
+
+def _run_guide(_args) -> None:
+    """Build and run a common command through a step-by-step prompt."""
+    console.print("\n[title]Guided command builder[/title]")
+    task = _ask("What would you like to do", default="analyze", choices=("analyze", "plot", "profiles"))
+    if task == "profiles":
+        argv = ["profiles"]
+    elif task == "plot":
+        field = _ask("Which quantity", default="density", choices=tuple(PLOT_FIELDS))
+        profile = _ask("MESA profile number", default="8")
+        argv = ["plot", field, "--profile", profile]
+    else:
+        source = _ask("What kind of input", default="mesa", choices=("mesa", "star", "profile"))
+        argv = ["analyze", source]
+        if source == "mesa":
+            argv += ["--profile", _ask("MESA profile number", default="8")]
+        elif source == "profile":
+            argv += [_ask("Path to the profile file")]
+        else:
+            argv += [
+                "--name", _ask("Star name", default="Custom Star"),
+                "--mass", _ask("Mass in solar masses", default="1"),
+                "--teff", _ask("Effective temperature in kelvin", default="5778"),
+                "--metallicity", _ask("Metallicity [Fe/H]", default="0"),
+                "--age", _ask("Age in billions of years", default="4.6"),
+            ]
+    console.print(f"\n[muted]Running:[/muted] [accent].\\stellar {' '.join(argv)}[/accent]\n")
+    if main(argv) != 0:
+        raise RuntimeError("The guided command did not complete successfully.")
+
+
 def _write_json(value: object, output: str | None = None) -> None:
     text = json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False)
     if output:
@@ -67,13 +110,15 @@ def _run_analyze(args) -> None:
 
 
 def _run_plot(args) -> None:
-    from stellar_analyzer.visualization import save_plot, terminal_plot
+    from stellar_analyzer.visualization import save_plot, show_plot_window, terminal_plot
 
     if args.save_only and not args.save:
         raise ValueError("--save-only requires --save PATH")
     result = analyze_mesa_job(args.job, args.profile)
-    if not args.save_only:
+    if args.terminal and not args.save_only:
         terminal_plot(result, args.field, args.width, args.height)
+    elif not args.save_only:
+        show_plot_window(result, args.field)
     if args.save:
         save_plot(result, args.field, args.save)
 
@@ -184,9 +229,16 @@ def _run_validate(args) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="stellar", description="Explore stellar structure, MESA profiles, and PINN models")
+    parser = argparse.ArgumentParser(
+        prog="stellar",
+        description="Explore stellar structure, MESA profiles, and PINN models.",
+        epilog="New here? Run '.\\stellar guide' for a step-by-step command builder.",
+    )
     parser.add_argument("--version", action="version", version="stellar-analyzer 0.3.0")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    guide = commands.add_parser("guide", help="build a command interactively, one question at a time")
+    guide.set_defaults(func=_run_guide)
 
     profiles = commands.add_parser("profiles", help="list snapshots in a MESA-Web job")
     profiles.add_argument("--job", type=Path, default=DEFAULT_JOB)
@@ -197,10 +249,10 @@ def build_parser() -> argparse.ArgumentParser:
     sources = analyze.add_subparsers(dest="source", required=True)
     star = sources.add_parser("star", help="analyze stellar parameters")
     star.add_argument("--name", default="Custom Star")
-    star.add_argument("--mass", type=float, required=True)
-    star.add_argument("--teff", type=float, required=True)
-    star.add_argument("--metallicity", type=float, default=0.0)
-    star.add_argument("--age", type=float, required=True)
+    star.add_argument("--mass", type=float, required=True, metavar="SOLAR_MASSES", help="stellar mass; Sun = 1")
+    star.add_argument("--teff", type=float, required=True, metavar="KELVIN", help="effective temperature; Sun ~ 5778")
+    star.add_argument("--metallicity", type=float, default=0.0, metavar="FE_H", help="metallicity [Fe/H] (default: 0)")
+    star.add_argument("--age", type=float, required=True, metavar="GYR", help="age in billions of years")
     mesa = sources.add_parser("mesa", help="analyze a MESA-Web snapshot")
     mesa.add_argument("--job", type=Path, default=DEFAULT_JOB)
     mesa.add_argument("--profile", type=int)
@@ -213,12 +265,13 @@ def build_parser() -> argparse.ArgumentParser:
         source.add_argument("--full", action="store_true", help="include radial arrays in JSON output")
         source.set_defaults(func=_run_analyze)
 
-    plot = commands.add_parser("plot", help="display a radial profile graph")
+    plot = commands.add_parser("plot", help="open professional radial profile graphs in a desktop window")
     plot.add_argument("field", choices=list(PLOT_FIELDS))
     plot.add_argument("--job", type=Path, default=DEFAULT_JOB)
     plot.add_argument("--profile", type=int)
     plot.add_argument("--save", type=Path, help="also save a high-resolution PNG")
-    plot.add_argument("--save-only", action="store_true", help="skip the terminal graph")
+    plot.add_argument("--save-only", action="store_true", help="save the PNG without opening a graph window")
+    plot.add_argument("--terminal", action="store_true", help="draw an ASCII graph instead of opening the desktop window")
     plot.add_argument("--width", type=int, default=68)
     plot.add_argument("--height", type=int, default=16)
     plot.set_defaults(func=_run_plot)

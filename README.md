@@ -17,6 +17,17 @@ After installation, run commands through the repository launcher:
 .\stellar --help
 ```
 
+Prefer to be walked through it? The interactive guide asks what you want to do,
+offers sensible defaults, shows the command it builds, and runs it for you:
+
+```powershell
+.\stellar guide
+```
+
+At each prompt, press Enter to accept the value in square brackets. Regular
+commands also include clearer value names and units in their `--help` output;
+for example, run `.\stellar analyze star --help`.
+
 ## Analyze
 
 List the bundled MESA snapshots:
@@ -34,14 +45,16 @@ Analyze the latest snapshot, with a concise JSON result:
 The default view is a readable terminal report. Add `--json` for machine-readable
 output, or `--output` to write JSON to a file.
 
-Display a radial graph directly in the terminal, or save a report-ready PNG:
+Open a separate desktop graph window with professional tabs for density,
+pressure, temperature, and local polytropic index. The window includes standard
+zoom, pan, reset, and image-export controls:
 
 ```powershell
 .\stellar plot density --profile 8
 .\stellar plot temperature --profile 8 --save outputs\temperature.png
 ```
 
-Available graphs are `density`, `pressure`, `temperature`, and `local-n`.
+For a text-only session, add `--terminal` to use the compact ASCII graph.
 
 Analyze a particular snapshot and save full radial arrays:
 

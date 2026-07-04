@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -24,6 +25,15 @@ def test_cli_parses_mesa_analysis_and_training_commands():
     assert validation.profile == 2
 
 
+def test_cli_guide_builds_and_runs_a_command(capsys):
+    with patch("builtins.input", side_effect=["profiles"]):
+        assert main(["guide"]) == 0
+    output = capsys.readouterr().out
+    assert "Guided command builder" in output
+    assert ".\\stellar profiles" in output
+    assert "8 snapshots available" in output
+
+
 def test_cli_analyzes_mesa_to_json(tmp_path):
     output = tmp_path / "analysis.json"
     code = main(["analyze", "mesa", "--profile", "8", "--output", str(output)])
@@ -36,7 +46,7 @@ def test_cli_analyzes_mesa_to_json(tmp_path):
 def test_cli_renders_analysis_and_terminal_plot(capsys):
     assert main(["analyze", "star", "--mass", "1", "--teff", "5778", "--age", "4.6"]) == 0
     assert "Physical contributions" in capsys.readouterr().out
-    assert main(["plot", "density", "--profile", "8", "--width", "30", "--height", "8"]) == 0
+    assert main(["plot", "density", "--profile", "8", "--terminal", "--width", "30", "--height", "8"]) == 0
     output = capsys.readouterr().out
     assert "Density" in output
     assert "radius / R" in output
@@ -46,6 +56,13 @@ def test_cli_saves_png_plot(tmp_path):
     output = tmp_path / "density.png"
     assert main(["plot", "density", "--profile", "8", "--save", str(output), "--save-only"]) == 0
     assert output.read_bytes().startswith(b"\x89PNG")
+
+
+def test_cli_opens_desktop_graph_window_by_default():
+    with patch("stellar_analyzer.visualization.show_plot_window") as show_window:
+        assert main(["plot", "local-n", "--profile", "8"]) == 0
+    show_window.assert_called_once()
+    assert show_window.call_args.args[1] == "local-n"
 
 
 def test_pinn_forward_and_physics_loss_are_differentiable():
