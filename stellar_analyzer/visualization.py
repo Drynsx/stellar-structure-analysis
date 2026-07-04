@@ -107,6 +107,32 @@ def _metric(parent, label: str, value: str) -> None:
              font=("Segoe UI Semibold", 10)).pack(anchor="w")
 
 
+def _graph_toolbar(parent, canvas, navigation_toolbar) -> None:
+    """Render an explicit graph control bar that remains visible at all sizes."""
+    import tkinter as tk
+    from tkinter import ttk
+
+    bar = tk.Frame(parent, bg="#FFFFFF", padx=12, pady=8,
+                   highlightbackground="#E2E8F0", highlightthickness=1)
+    bar.pack(fill="x", padx=8, pady=(8, 0))
+    tk.Label(bar, text="GRAPH CONTROLS", bg="#FFFFFF", fg="#64748B",
+             font=("Segoe UI Semibold", 7)).pack(side="left", padx=(0, 12))
+    actions = (
+        ("Reset", navigation_toolbar.home),
+        ("← Back", navigation_toolbar.back),
+        ("Forward →", navigation_toolbar.forward),
+        ("Pan", navigation_toolbar.pan),
+        ("Zoom", navigation_toolbar.zoom),
+        ("Save image…", navigation_toolbar.save_figure),
+    )
+    for text, command in actions:
+        ttk.Button(bar, text=text, command=command, takefocus=True).pack(side="left", padx=(0, 6))
+    tk.Label(bar, text="Ctrl+S: save  •  Ctrl+R: reset  •  Esc: close", bg="#FFFFFF", fg="#94A3B8",
+             font=("Segoe UI", 8)).pack(side="right")
+    canvas.get_tk_widget().bind("<Control-s>", lambda _event: navigation_toolbar.save_figure())
+    canvas.get_tk_widget().bind("<Control-r>", lambda _event: navigation_toolbar.home())
+
+
 def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> None:
     """Open a native desktop window with one professional tab per graph."""
     try:
@@ -127,6 +153,7 @@ def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> 
         style.theme_use("vista")
     style.configure("Graph.TNotebook", background="#F1F5F9", borderwidth=0)
     style.configure("Graph.TNotebook.Tab", padding=(18, 9), font=("Segoe UI", 10))
+    style.configure("TButton", padding=(10, 5), font=("Segoe UI", 9))
     style.map("Graph.TNotebook.Tab", foreground=[("selected", "#1D4ED8")],
               background=[("selected", "#FFFFFF")])
 
@@ -163,11 +190,10 @@ def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> 
         notebook.add(tab, text=title)
         figure = create_figure(result, field)
         canvas = FigureCanvasTkAgg(figure, master=tab)
+        navigation_toolbar = NavigationToolbar2Tk(canvas, tab, pack_toolbar=False)
+        _graph_toolbar(tab, canvas, navigation_toolbar)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=(8, 0))
-        toolbar_frame = tk.Frame(tab, bg="#F8FAFC", padx=4, pady=3)
-        toolbar_frame.pack(fill="x", padx=8, pady=(0, 8))
-        NavigationToolbar2Tk(canvas, toolbar_frame, pack_toolbar=False).pack(side="left")
         tabs[field] = tab
     notebook.select(tabs[initial_field])
     root.bind("<Escape>", lambda _event: root.destroy())
