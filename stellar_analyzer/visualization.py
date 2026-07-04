@@ -74,7 +74,8 @@ def create_figure(result: dict[str, Any], field: str):
     axis = figure.add_subplot(111)
     axis.set_facecolor("#FFFFFF")
     axis.plot(x, y, color="#2563EB", linewidth=2.35, solid_capstyle="round", label=title)
-    axis.fill_between(x, y, float(np.nanmin(y)), color="#2563EB", alpha=0.07)
+    baseline = 0.0 if float(np.nanmin(y)) < 0 < float(np.nanmax(y)) else float(np.nanmin(y))
+    axis.fill_between(x, y, baseline, color="#2563EB", alpha=0.065)
     axis.set_title(title, loc="left", fontsize=17, fontweight="semibold", color="#0F172A", pad=18)
     axis.text(0, 1.015, "Radial stellar structure profile", transform=axis.transAxes,
               fontsize=9.5, color="#64748B", va="bottom")
@@ -88,8 +89,22 @@ def create_figure(result: dict[str, Any], field: str):
     axis.tick_params(colors="#475569", labelsize=9)
     axis.spines[["top", "right"]].set_visible(False)
     axis.spines[["left", "bottom"]].set_color("#94A3B8")
-    axis.legend(loc="best", frameon=False, fontsize=9)
+    axis.text(1, -0.16, f"{len(x):,} valid radial samples", transform=axis.transAxes,
+              ha="right", va="top", fontsize=8.5, color="#64748B")
     return figure
+
+
+def _metric(parent, label: str, value: str) -> None:
+    """Render a compact, readable stellar metadata card."""
+    import tkinter as tk
+
+    card = tk.Frame(parent, bg="#FFFFFF", padx=14, pady=8, highlightbackground="#E2E8F0",
+                    highlightthickness=1)
+    card.pack(side="left", padx=(0, 8))
+    tk.Label(card, text=label.upper(), bg="#FFFFFF", fg="#64748B",
+             font=("Segoe UI Semibold", 7)).pack(anchor="w")
+    tk.Label(card, text=value, bg="#FFFFFF", fg="#0F172A",
+             font=("Segoe UI Semibold", 10)).pack(anchor="w")
 
 
 def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> None:
@@ -103,7 +118,7 @@ def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> 
 
     root = tk.Tk()
     root.title("Stellar Analyzer — Radial Profiles")
-    root.geometry("1100x720")
+    root.geometry("1120x760")
     root.minsize(820, 560)
     root.configure(bg="#F1F5F9")
 
@@ -112,19 +127,36 @@ def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> 
         style.theme_use("vista")
     style.configure("Graph.TNotebook", background="#F1F5F9", borderwidth=0)
     style.configure("Graph.TNotebook.Tab", padding=(18, 9), font=("Segoe UI", 10))
+    style.map("Graph.TNotebook.Tab", foreground=[("selected", "#1D4ED8")],
+              background=[("selected", "#FFFFFF")])
 
     header = tk.Frame(root, bg="#0F172A", padx=24, pady=16)
     header.pack(fill="x")
-    tk.Label(header, text="Stellar structure", bg="#0F172A", fg="#F8FAFC",
-             font=("Segoe UI Semibold", 18)).pack(side="left")
+    title_group = tk.Frame(header, bg="#0F172A")
+    title_group.pack(side="left")
+    tk.Label(title_group, text="Stellar structure", bg="#0F172A", fg="#F8FAFC",
+             font=("Segoe UI Semibold", 18)).pack(anchor="w")
+    tk.Label(title_group, text="Interactive radial profile explorer", bg="#0F172A", fg="#94A3B8",
+             font=("Segoe UI", 9)).pack(anchor="w")
     source = result.get("input", {}).get("name", "MESA profile")
     profile_number = result.get("source", {}).get("profile_number")
     detail = source + (f"  •  Profile {profile_number}" if profile_number is not None else "")
-    tk.Label(header, text=detail, bg="#0F172A", fg="#94A3B8",
-             font=("Segoe UI", 10)).pack(side="right", pady=(5, 0))
+    tk.Label(header, text=detail, bg="#1E293B", fg="#CBD5E1", padx=12, pady=6,
+             font=("Segoe UI Semibold", 9)).pack(side="right", pady=(5, 0))
+
+    metadata = tk.Frame(root, bg="#F1F5F9", padx=22, pady=12)
+    metadata.pack(fill="x")
+    stellar = result.get("input", {})
+    fit = result.get("global_fit", {})
+    _metric(metadata, "Mass", f"{stellar.get('mass', '—'):.4g} M☉" if isinstance(stellar.get("mass"), (int, float)) else "—")
+    _metric(metadata, "Temperature", f"{stellar.get('teff', '—'):.0f} K" if isinstance(stellar.get("teff"), (int, float)) else "—")
+    _metric(metadata, "Age", f"{stellar.get('age', '—'):.4g} Gyr" if isinstance(stellar.get("age"), (int, float)) else "—")
+    _metric(metadata, "Global n", f"{fit.get('n_global', '—'):.3f}" if isinstance(fit.get("n_global"), (int, float)) else "—")
+    tk.Label(metadata, text="Use the toolbar to zoom, pan, reset, or export",
+             bg="#F1F5F9", fg="#64748B", font=("Segoe UI", 9)).pack(side="right", pady=12)
 
     notebook = ttk.Notebook(root, style="Graph.TNotebook")
-    notebook.pack(fill="both", expand=True, padx=14, pady=14)
+    notebook.pack(fill="both", expand=True, padx=14, pady=(0, 14))
     tabs: dict[str, tk.Frame] = {}
     for field, (_, title, _, _) in PLOT_FIELDS.items():
         tab = tk.Frame(notebook, bg="#F8FAFC")
@@ -133,9 +165,10 @@ def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> 
         canvas = FigureCanvasTkAgg(figure, master=tab)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=(8, 0))
-        toolbar_frame = tk.Frame(tab, bg="#F8FAFC")
+        toolbar_frame = tk.Frame(tab, bg="#F8FAFC", padx=4, pady=3)
         toolbar_frame.pack(fill="x", padx=8, pady=(0, 8))
         NavigationToolbar2Tk(canvas, toolbar_frame, pack_toolbar=False).pack(side="left")
         tabs[field] = tab
     notebook.select(tabs[initial_field])
+    root.bind("<Escape>", lambda _event: root.destroy())
     root.mainloop()

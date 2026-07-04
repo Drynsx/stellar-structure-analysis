@@ -54,6 +54,9 @@ zoom, pan, reset, and image-export controls:
 .\stellar plot temperature --profile 8 --save outputs\temperature.png
 ```
 
+On Windows, double-click `stellar-graphs.pyw` to open the complete graph
+workspace directly without a terminal window.
+
 For a text-only session, add `--terminal` to use the compact ASCII graph.
 
 Analyze a particular snapshot and save full radial arrays:

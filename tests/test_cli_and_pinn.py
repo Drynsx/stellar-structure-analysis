@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from stellar_analyzer.cli import build_parser, main
+from stellar_analyzer.visualization import create_figure
 from stellar_analyzer.ml.pinn_model import (
     Hdf5StellarDataset, StellarPINN, build_differentiable_features, physics_residual_loss,
 )
@@ -63,6 +64,16 @@ def test_cli_opens_desktop_graph_window_by_default():
         assert main(["plot", "local-n", "--profile", "8"]) == 0
     show_window.assert_called_once()
     assert show_window.call_args.args[1] == "local-n"
+
+
+def test_professional_figure_has_clear_labels_and_sample_context():
+    from stellar_analyzer.core.pipeline import analyze_mesa_job
+
+    figure = create_figure(analyze_mesa_job(ROOT / "data" / "raw" / "MESA-Web_Job_03242664908", 8), "local-n")
+    axis = figure.axes[0]
+    assert axis.get_title(loc="left") == "Local polytropic index"
+    assert axis.get_xlabel() == "Normalized radius  r / R"
+    assert any("valid radial samples" in item.get_text() for item in axis.texts)
 
 
 def test_pinn_forward_and_physics_loss_are_differentiable():
