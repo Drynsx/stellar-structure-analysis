@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import csv
 import hashlib
 import json
@@ -29,11 +30,12 @@ from stellar_analyzer.core.deviation_drivers import (
     calculate_delta_n_rad,
 )
 from stellar_analyzer.core.pipeline import analyze_profile
-from stellar_analyzer.core.uncertainty import propagate_delta_n_rad_error
+from stellar_analyzer.core.uncertainty import bootstrap_global_n, propagate_delta_n_rad_error
 
 
 DEFAULT_JOB = PROJECT_ROOT / "data" / "raw" / "MESA-Web_Job_03242664908"
 DEFAULT_OUTPUT = PROJECT_ROOT / "paper_report_data"
+BOOTSTRAP_CACHE = PROJECT_ROOT / "data" / "processed" / "bootstrap_summary.json"
 PAPER_REFERENCE = Path(r"C:\Users\Lenovo\Documents\physics sheets\บท1-3 (fixed format ครั้ง 1).pdf")
 
 
@@ -85,7 +87,31 @@ def _reference_record() -> dict:
     return record
 
 
-def build(job: Path, output: Path) -> None:
+def _bootstrap_profile(task: tuple[str, int, int, int]) -> dict:
+    job_text, profile_number, resamples, seed = task
+    result = analyze_profile(load_mesa_web_job(Path(job_text), profile_number))
+    profile = result["profile"]
+    summary = bootstrap_global_n(
+        np.asarray(profile["radius"]), np.asarray(profile["rho"]),
+        float(result["input"]["teff"]), resamples, seed + profile_number,
+    )
+    summary.pop("samples")
+    return {"profile": profile_number, **summary}
+
+
+def _bootstrap_evidence(job: Path, snapshots: list[dict], resamples: int, seed: int) -> list[dict]:
+    if resamples > 0:
+        tasks = [(str(job), int(item["profile_number"]), resamples, seed) for item in snapshots]
+        with ProcessPoolExecutor(max_workers=min(len(tasks), 8)) as executor:
+            rows = list(executor.map(_bootstrap_profile, tasks))
+        _write_json(BOOTSTRAP_CACHE, {"job": _display_path(job), "results": rows})
+        return rows
+    if BOOTSTRAP_CACHE.exists():
+        return json.loads(BOOTSTRAP_CACHE.read_text(encoding="utf-8"))["results"]
+    return []
+
+
+def build(job: Path, output: Path, bootstrap_resamples: int = 0, bootstrap_seed: int = 42) -> None:
     _clean_output(output)
     (output / "README.md").write_text(
         """# Paper Report Data
@@ -106,14 +132,15 @@ Important interpretation notes:
   are implementation evidence, not the proposed 50,000-model atlas.
 - The PINN is not trained; no synthetic training result is presented as evidence.
 - Hydrostatic failures are retained as findings rather than silently removed.
-- Radiation uncertainty uses a recorded 1% input-error assumption. The
-  1,000-resample bootstrap protocol is documented but not claimed as completed.
+- Radiation uncertainty uses a recorded 1% input-error assumption. Seeded
+  bootstrap summaries record completion and successful-fit rates per profile.
 """,
         encoding="utf-8",
     )
     snapshots = list_mesa_profiles(job)
     if not snapshots:
         raise ValueError(f"No MESA profiles found in {job}")
+    bootstrap_rows = _bootstrap_evidence(job, snapshots, bootstrap_resamples, bootstrap_seed)
 
     _write_json(output / "00_reference" / "paper_reference.json", _reference_record())
 
@@ -334,9 +361,10 @@ Important interpretation notes:
             "method": "resample radial-density pairs with replacement and refit n_global",
             "required_resamples": 1000,
             "implemented_function": "stellar_analyzer.core.uncertainty.bootstrap_global_n",
-            "status": "not_run_for_this_evidence_build",
-            "reason": "Bootstrap is intentionally kept separate because it is stochastic and computationally expensive.",
-            "reproduction_command": ".venv\\Scripts\\python.exe -m stellar_analyzer.cli uncertainty --bootstrap 1000 (CLI pending)",
+            "status": "completed" if bootstrap_rows and all(row["valid"] for row in bootstrap_rows) else "incomplete",
+            "minimum_success_rate": 0.90,
+            "results": bootstrap_rows,
+            "reproduction_command": ".venv\\Scripts\\python.exe scripts\\build_paper_report_data.py --bootstrap 1000 --seed 42",
         },
     )
     _write_json(
@@ -425,8 +453,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--job", type=Path, default=DEFAULT_JOB)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--bootstrap", type=int, default=0, metavar="RESAMPLES")
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    build(args.job, args.output)
+    build(args.job, args.output, args.bootstrap, args.seed)
     print(args.output.resolve())
 
 

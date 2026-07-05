@@ -132,6 +132,23 @@ def _run_batch(args) -> None:
     success(f"Analyzed {len(result)} stars -> {output}")
 
 
+def _run_uncertainty(args) -> None:
+    from stellar_analyzer.core.uncertainty import bootstrap_global_n
+
+    result = analyze_mesa_job(args.job, args.profile)
+    profile = result["profile"]
+    bootstrap = bootstrap_global_n(
+        np.asarray(profile["radius"]), np.asarray(profile["rho"]),
+        float(result["input"]["teff"]), args.bootstrap, args.seed,
+    )
+    samples = bootstrap.pop("samples")
+    if args.include_samples:
+        bootstrap["samples"] = samples.tolist()
+    bootstrap["profile"] = args.profile
+    bootstrap["job"] = str(args.job)
+    _write_json(bootstrap, str(args.output) if args.output else None)
+
+
 def _run_prepare(args) -> None:
     from stellar_analyzer.ml.training_data import prepare_hdf5_grid_dataset, prepare_mesa_dataset
 
@@ -280,6 +297,15 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("input", type=Path)
     batch.add_argument("--output", required=True)
     batch.set_defaults(func=_run_batch)
+
+    uncertainty = commands.add_parser("uncertainty", help="bootstrap uncertainty for a MESA global fit")
+    uncertainty.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    uncertainty.add_argument("--profile", type=int, required=True)
+    uncertainty.add_argument("--bootstrap", type=int, default=1000, metavar="RESAMPLES")
+    uncertainty.add_argument("--seed", type=int, default=42)
+    uncertainty.add_argument("--output", type=Path)
+    uncertainty.add_argument("--include-samples", action="store_true")
+    uncertainty.set_defaults(func=_run_uncertainty)
 
     prepare = commands.add_parser("prepare-pinn", help="build a PINN dataset from a MESA-Web job")
     prepare.add_argument("--job", type=Path, default=DEFAULT_JOB)

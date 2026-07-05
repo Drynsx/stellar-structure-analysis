@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from stellar_analyzer.cli import build_parser, main
+from stellar_analyzer.core.uncertainty import bootstrap_global_n, propagate_delta_n_rad_error
 from stellar_analyzer.visualization import create_figure
 from stellar_analyzer.ml.pinn_model import (
     Hdf5StellarDataset, StellarPINN, build_differentiable_features, physics_residual_loss,
@@ -14,6 +15,21 @@ from stellar_analyzer.ml.training_data import inspect_dataset, prepare_hdf5_grid
 
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_bootstrap_is_deterministic_and_reports_validity():
+    radius = np.linspace(1.0e8, 2.0e10, 24)
+    rho = 100.0 * np.clip(1.0 - (radius / radius.max()) ** 2, 1e-5, None) ** 1.5
+    first = bootstrap_global_n(radius, rho, 5778.0, n_bootstrap=5, random_state=7)
+    second = bootstrap_global_n(radius, rho, 5778.0, n_bootstrap=5, random_state=7)
+    assert first["requested_resamples"] == 5
+    assert np.array_equal(first["samples"], second["samples"])
+    assert first["success_rate"] == first["n_success"] / 5
+
+
+def test_radiation_analytical_derivatives_match_finite_difference():
+    result = propagate_delta_n_rad_error(0.8, 1.0e7, 100.0, 0.01, 1.0e4, 1.0)
+    assert result["derivative_max_relative_error"] < 1e-6
 
 
 def test_cli_parses_mesa_analysis_and_training_commands():

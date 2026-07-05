@@ -16,5 +16,5 @@ Important interpretation notes:
   are implementation evidence, not the proposed 50,000-model atlas.
 - The PINN is not trained; no synthetic training result is presented as evidence.
 - Hydrostatic failures are retained as findings rather than silently removed.
-- Radiation uncertainty uses a recorded 1% input-error assumption. The
-  1,000-resample bootstrap protocol is documented but not claimed as completed.
+- Radiation uncertainty uses a recorded 1% input-error assumption. Seeded
+  bootstrap summaries record completion and successful-fit rates per profile.

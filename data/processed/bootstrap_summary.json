@@ -1,9 +1,5 @@
 {
-  "method": "resample radial-density pairs with replacement and refit n_global",
-  "required_resamples": 1000,
-  "implemented_function": "stellar_analyzer.core.uncertainty.bootstrap_global_n",
-  "status": "completed",
-  "minimum_success_rate": 0.9,
+  "job": "data/raw/MESA-Web_Job_03242664908",
   "results": [
     {
       "profile": 1,
@@ -117,6 +113,5 @@
         3.160989079920617
       ]
     }
-  ],
-  "reproduction_command": ".venv\\Scripts\\python.exe scripts\\build_paper_report_data.py --bootstrap 1000 --seed 42"
+  ]
 }

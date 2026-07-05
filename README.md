@@ -78,6 +78,15 @@ For a catalog, provide CSV columns `mass`, `teff`, `metallicity`, and `age`:
 .\stellar batch stars.csv --output outputs\catalog_results.csv
 ```
 
+Run a reproducible 1,000-resample uncertainty analysis for a MESA snapshot:
+
+```powershell
+.\stellar uncertainty --profile 8 --bootstrap 1000 --seed 42 --output outputs\profile8-uncertainty.json
+```
+
+The summary records the successful-fit rate and 95% confidence interval. Add
+`--include-samples` only when individual bootstrap values are required.
+
 ## Prepare and train the PINN
 
 The bundled dataset is generated from all eight snapshots with no pickled
