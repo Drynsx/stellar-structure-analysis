@@ -1,6 +1,8 @@
 from stellar_analyzer import analyze_star, batch_analyze
 from stellar_analyzer.core.data_loader import list_mesa_profiles, load_mesa_web_job
 from stellar_analyzer.core.deviation_drivers import calculate_delta_n_conv
+from stellar_analyzer.core.constants import G_CGS
+from stellar_analyzer.core.global_fit import fit_global_polytrope, solve_lane_emden_rk4
 from stellar_analyzer.core.pipeline import analyze_mesa_job
 from stellar_analyzer.core.preprocess import preprocess_profile
 
@@ -13,6 +15,8 @@ from pathlib import Path
 def test_single_star_analysis_smoke():
     result = analyze_star({"name": "Sun", "mass": 1.0, "teff": 5778.0, "metallicity": 0.0, "age": 4.6})
     assert result["global_fit"]["n_global"] > 0
+    assert result["global_fit"]["rho_c"] > 0
+    assert result["global_fit"]["K"] > 0
     assert set(result["deviation_factors"]) == {
         "delta_n_rad",
         "delta_n_mu",
@@ -63,3 +67,20 @@ def test_young_mesa_profile_has_reasonable_residual_and_hydrostatic_check():
     assert -5.0 <= result["anomaly_score"] <= 5.0
     assert result["deviation_factors"]["delta_n_conv"] <= 12.0
     assert result["preprocessing"]["hydrostatic_ok"] is True
+
+
+def test_global_fit_recovers_physical_polytrope_parameters():
+    n_true = 1.5
+    rho_c_true = 120.0
+    alpha_true = 8.0e9
+    xi, theta = solve_lane_emden_rk4(n_true, xi_max=3.2, step=0.01)
+    radius = xi * alpha_true
+    density = rho_c_true * theta**n_true
+
+    fit = fit_global_polytrope(radius, density, Teff=5778.0)
+    expected_k = 4.0 * np.pi * G_CGS * alpha_true**2 * rho_c_true ** (1.0 - 1.0 / n_true) / (n_true + 1.0)
+
+    assert np.isclose(fit.n_global, n_true, rtol=0.03)
+    assert np.isclose(fit.rho_c, rho_c_true, rtol=0.03)
+    assert np.isclose(fit.alpha, alpha_true, rtol=0.03)
+    assert np.isclose(fit.K, expected_k, rtol=0.08)

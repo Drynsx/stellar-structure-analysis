@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from stellar_analyzer.core.constants import G_CGS
+
 try:  # Prefer SciPy's Levenberg-Marquardt optimizer when available.
     from scipy.optimize import least_squares
 except Exception:  # pragma: no cover - minimal/broken local environments.
@@ -16,6 +18,7 @@ except Exception:  # pragma: no cover - minimal/broken local environments.
 class GlobalFitResult:
     n_global: float
     K: float
+    rho_c: float
     alpha: float
     reduced_chi2: float
     success: bool
@@ -24,6 +27,7 @@ class GlobalFitResult:
     def __iter__(self):
         yield self.n_global
         yield self.K
+        yield self.rho_c
         yield self.alpha
         yield self.reduced_chi2
 
@@ -82,13 +86,13 @@ def solve_lane_emden_rk4(
     return xi_arr, theta_arr
 
 
-def _predict_density(radius: np.ndarray, n_index: float, K: float, alpha: float) -> np.ndarray:
+def _predict_density(radius: np.ndarray, n_index: float, rho_c: float, alpha: float) -> np.ndarray:
     xi_target = radius / max(alpha, 1e-30)
     xi_max = max(float(np.nanmax(xi_target)) * 1.05, 1.0)
     xi_grid, theta_grid = solve_lane_emden_rk4(n_index, xi_max=xi_max)
     theta = np.interp(xi_target, xi_grid, theta_grid, left=theta_grid[0], right=0.0)
     theta = np.clip(theta, 0.0, None)
-    return K * np.power(theta, n_index)
+    return rho_c * np.power(theta, n_index)
 
 
 def _fallback_grid_fit(radius: np.ndarray, rho: np.ndarray, sigma: np.ndarray, n_initial: float):
@@ -115,10 +119,11 @@ def _fallback_grid_fit(radius: np.ndarray, rho: np.ndarray, sigma: np.ndarray, n
 
 
 def fit_global_polytrope(r_array: np.ndarray, rho_array: np.ndarray, Teff: float) -> GlobalFitResult:
-    """Fit ``n``, central-density scale ``K``, and radial scale ``alpha``.
+    """Fit ``n``, central density ``rho_c``, and radial scale ``alpha``.
 
     The optimizer uses SciPy's Levenberg-Marquardt implementation. Positivity
-    of ``K`` and ``alpha`` is enforced with logarithmic parameters.
+    of ``rho_c`` and ``alpha`` is enforced with logarithmic parameters. The
+    physical polytropic constant is derived from the Lane-Emden scale relation.
     """
 
     radius = np.asarray(r_array, dtype=float)
@@ -143,12 +148,12 @@ def fit_global_polytrope(r_array: np.ndarray, rho_array: np.ndarray, Teff: float
 
     def residual(params: np.ndarray) -> np.ndarray:
         n_index = float(params[0])
-        K = float(np.exp(params[1]))
+        rho_c = float(np.exp(params[1]))
         alpha = float(np.exp(params[2]))
-        if n_index <= 0.05 or n_index > 8.0 or not np.isfinite(K) or not np.isfinite(alpha):
+        if n_index <= 0.05 or n_index > 8.0 or not np.isfinite(rho_c) or not np.isfinite(alpha):
             return np.full_like(rho, 1e6)
         try:
-            pred = _predict_density(radius, n_index, K, alpha)
+            pred = _predict_density(radius, n_index, rho_c, alpha)
         except Exception:
             return np.full_like(rho, 1e6)
         return (rho - pred) / sigma
@@ -167,12 +172,14 @@ def fit_global_polytrope(r_array: np.ndarray, rho_array: np.ndarray, Teff: float
         success = True
 
     n_fit = float(x_fit[0])
-    K_fit = float(np.exp(x_fit[1]))
+    rho_c_fit = float(np.exp(x_fit[1]))
     alpha_fit = float(np.exp(x_fit[2]))
+    K_fit = float(4.0 * np.pi * G_CGS * alpha_fit**2 * rho_c_fit ** (1.0 - 1.0 / n_fit) / (n_fit + 1.0))
     chi2 = float(np.sum(residual(x_fit) ** 2) / max(radius.size - 3, 1))
     return GlobalFitResult(
         n_global=n_fit,
         K=K_fit,
+        rho_c=rho_c_fit,
         alpha=alpha_fit,
         reduced_chi2=chi2,
         success=success,

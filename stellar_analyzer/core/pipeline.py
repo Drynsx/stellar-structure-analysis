@@ -126,7 +126,7 @@ def _analyze_profile(
     pressure = profile["pressure"]
     temperature = profile["temperature"]
 
-    global_fit = fit_global_polytrope(rfrac, rho, request.teff)
+    global_fit = fit_global_polytrope(r, rho, request.teff)
     local_n = calculate_local_n(pressure, rho, rfrac)
     piecewise = fit_piecewise(
         rfrac,
