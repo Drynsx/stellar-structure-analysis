@@ -12,8 +12,8 @@ evidence, and `MANIFEST.csv` records file sizes and SHA-256 checksums.
 
 Important interpretation notes:
 
-- These eight snapshots are from one approximately solar-mass MESA track. They
-  are implementation evidence, not the proposed 50,000-model atlas.
+- The validation summary reports the actual number of tracks and profiles. It
+  never substitutes evolutionary tables or synthetic profiles for MESA radial data.
 - The PINN is not trained; no synthetic training result is presented as evidence.
 - Hydrostatic failures are retained as findings rather than silently removed.
 - Radiation uncertainty uses a recorded 1% input-error assumption. Seeded

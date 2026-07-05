@@ -138,6 +138,16 @@ then rebuild the dataset before production training.
 .venv\Scripts\python.exe -m pytest -q
 ```
 
+Additional genuine MESA-Web track directories can be included without mixing
+their validation folds:
+
+```powershell
+.venv\Scripts\python.exe scripts\build_paper_report_data.py `
+  --extra-job data\raw\MESA-Web_0.8M `
+  --extra-job data\raw\MESA-Web_2M `
+  --extra-job data\raw\MESA-Web_5M
+```
+
 `paper_report_data/` maps the reproducible evidence to Chapter 3, PDF pages
 18-42. `METHOD_TRACEABILITY.csv` locates each method and `MANIFEST.csv` records
 file hashes.

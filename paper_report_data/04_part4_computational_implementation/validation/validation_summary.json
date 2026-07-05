@@ -5,6 +5,11 @@
   "all_scalar_profiles_positive": true,
   "hydrostatic_pass_count": 8,
   "hydrostatic_fail_count": 0,
+  "external_multitrack_ready": false,
+  "external_multitrack_errors": [
+    "Need at least four tracks; found 1",
+    "Missing target mass coverage: 0.8, 2.0, 5.0"
+  ],
   "test_command": ".venv\\Scripts\\python.exe -m pytest -q",
   "python_version": "3.12.13"
 }

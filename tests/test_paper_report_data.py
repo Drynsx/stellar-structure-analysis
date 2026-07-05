@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from stellar_analyzer.core.validation import assess_multitrack_manifest, leave_one_track_out
+
 
 ROOT = Path(__file__).parents[1]
 REPORT = ROOT / "paper_report_data"
@@ -41,3 +43,25 @@ def test_paper_report_manifest_hashes_match():
         assert path.is_file()
         assert path.stat().st_size == row.size_bytes
         assert hashlib.sha256(path.read_bytes()).hexdigest() == row.sha256
+
+
+def test_leave_one_track_out_never_leaks_profiles():
+    track_ids = ["a", "a", "a", "b", "b", "b", "c", "c", "c", "d", "d", "d"]
+    folds = leave_one_track_out(track_ids)
+    assert len(folds) == 4
+    for fold in folds:
+        assert all(track_ids[index] != fold["held_out_track"] for index in fold["train_indices"])
+        assert all(track_ids[index] == fold["held_out_track"] for index in fold["validation_indices"])
+
+
+def test_multitrack_gate_requires_real_coverage_and_provenance():
+    rows = []
+    for track, mass in zip("abcd", (0.8, 1.0, 2.0, 5.0)):
+        for age in (1.0, 2.0, 3.0):
+            rows.append({
+                "track_id": track, "source": "MESA", "model_version": "test",
+                "mass_msun": mass, "metallicity": 0.02, "age_years": age,
+                "evolution_stage": "test", "sha256": "abc", "usage_rights": "test data",
+            })
+    assert assess_multitrack_manifest(rows)["ready"] is True
+    assert assess_multitrack_manifest(rows[:3])["ready"] is False

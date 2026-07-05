@@ -1,0 +1,23 @@
+{
+  "ready": false,
+  "track_count": 1,
+  "profile_count": 8,
+  "snapshots_per_track": {
+    "MESA-Web_Job_03242664908": 8
+  },
+  "target_masses_msun": [
+    0.8,
+    1.0,
+    2.0,
+    5.0
+  ],
+  "covered_target_masses_msun": [
+    1.0
+  ],
+  "leave_one_track_out_folds": 0,
+  "errors": [
+    "Need at least four tracks; found 1",
+    "Missing target mass coverage: 0.8, 2.0, 5.0"
+  ],
+  "folds": []
+}

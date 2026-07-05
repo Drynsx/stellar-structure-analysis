@@ -31,6 +31,7 @@ from stellar_analyzer.core.deviation_drivers import (
 )
 from stellar_analyzer.core.pipeline import analyze_profile
 from stellar_analyzer.core.uncertainty import bootstrap_global_n, propagate_delta_n_rad_error
+from stellar_analyzer.core.validation import assess_multitrack_manifest, leave_one_track_out
 
 
 DEFAULT_JOB = PROJECT_ROOT / "data" / "raw" / "MESA-Web_Job_03242664908"
@@ -96,22 +97,33 @@ def _bootstrap_profile(task: tuple[str, int, int, int]) -> dict:
         float(result["input"]["teff"]), resamples, seed + profile_number,
     )
     summary.pop("samples")
-    return {"profile": profile_number, **summary}
+    return {"track_id": Path(job_text).name, "profile": profile_number, **summary}
 
 
-def _bootstrap_evidence(job: Path, snapshots: list[dict], resamples: int, seed: int) -> list[dict]:
+def _bootstrap_evidence(snapshots: list[dict], resamples: int, seed: int) -> list[dict]:
     if resamples > 0:
-        tasks = [(str(job), int(item["profile_number"]), resamples, seed) for item in snapshots]
+        tasks = [(str(item["_job"]), int(item["profile_number"]), resamples, seed) for item in snapshots]
         with ProcessPoolExecutor(max_workers=min(len(tasks), 8)) as executor:
             rows = list(executor.map(_bootstrap_profile, tasks))
-        _write_json(BOOTSTRAP_CACHE, {"job": _display_path(job), "results": rows})
+        _write_json(BOOTSTRAP_CACHE, {
+            "jobs": sorted({_display_path(Path(item["_job"])) for item in snapshots}), "results": rows,
+        })
         return rows
     if BOOTSTRAP_CACHE.exists():
-        return json.loads(BOOTSTRAP_CACHE.read_text(encoding="utf-8"))["results"]
+        cached = json.loads(BOOTSTRAP_CACHE.read_text(encoding="utf-8"))
+        expected = sorted({_display_path(Path(item["_job"])) for item in snapshots})
+        cached_jobs = cached.get("jobs", [cached.get("job")])
+        return cached["results"] if cached_jobs == expected else []
     return []
 
 
-def build(job: Path, output: Path, bootstrap_resamples: int = 0, bootstrap_seed: int = 42) -> None:
+def build(
+    job: Path,
+    output: Path,
+    bootstrap_resamples: int = 0,
+    bootstrap_seed: int = 42,
+    extra_jobs: list[Path] | None = None,
+) -> None:
     _clean_output(output)
     (output / "README.md").write_text(
         """# Paper Report Data
@@ -128,8 +140,8 @@ evidence, and `MANIFEST.csv` records file sizes and SHA-256 checksums.
 
 Important interpretation notes:
 
-- These eight snapshots are from one approximately solar-mass MESA track. They
-  are implementation evidence, not the proposed 50,000-model atlas.
+- The validation summary reports the actual number of tracks and profiles. It
+  never substitutes evolutionary tables or synthetic profiles for MESA radial data.
 - The PINN is not trained; no synthetic training result is presented as evidence.
 - Hydrostatic failures are retained as findings rather than silently removed.
 - Radiation uncertainty uses a recorded 1% input-error assumption. Seeded
@@ -137,10 +149,11 @@ Important interpretation notes:
 """,
         encoding="utf-8",
     )
-    snapshots = list_mesa_profiles(job)
+    jobs = [job, *(extra_jobs or [])]
+    snapshots = [dict(snapshot, _job=str(source_job)) for source_job in jobs for snapshot in list_mesa_profiles(source_job)]
     if not snapshots:
-        raise ValueError(f"No MESA profiles found in {job}")
-    bootstrap_rows = _bootstrap_evidence(job, snapshots, bootstrap_resamples, bootstrap_seed)
+        raise ValueError("No MESA profiles found in the requested jobs")
+    bootstrap_rows = _bootstrap_evidence(snapshots, bootstrap_resamples, bootstrap_seed)
 
     _write_json(output / "00_reference" / "paper_reference.json", _reference_record())
 
@@ -158,8 +171,9 @@ Important interpretation notes:
     radial_driver_rows: list[dict] = []
 
     for snapshot in snapshots:
+        source_job = Path(snapshot["_job"])
         profile_number = int(snapshot["profile_number"])
-        model = load_mesa_web_job(job, profile_number)
+        model = load_mesa_web_job(source_job, profile_number)
         result = analyze_profile(model)
         metadata = model.metadata
         profile = {key: np.asarray(value, dtype=float) for key, value in result["profile"].items()}
@@ -169,12 +183,20 @@ Important interpretation notes:
         source_rows.append(
             {
                 "star_id": star_id,
+                "track_id": source_job.name,
+                "source": "MESA-Web",
+                "model_version": str(metadata.get("version_number", "unknown")),
                 "profile_number": profile_number,
                 "model_number": int(snapshot["model_number"]),
+                "mass_msun": float(metadata["star_mass"]),
+                "metallicity": float(metadata["initial_z"]),
+                "age_years": float(metadata["star_age"]),
+                "evolution_stage": "pre-main-sequence" if float(metadata["star_age"]) < 1e8 else "main-sequence",
                 "priority": int(snapshot["priority"]),
                 "source_file": _display_path(source_path),
                 "size_bytes": source_path.stat().st_size,
                 "sha256": _sha256(source_path),
+                "usage_rights": "User-generated MESA-Web output for research use; cite MESA and MESA-Web",
             }
         )
         global_rows.append(
@@ -354,6 +376,11 @@ Important interpretation notes:
     _write_csv(part2 / "radiation_error_propagation.csv", uncertainty_rows)
     _write_csv(part3 / "contribution_percentages.csv", contribution_rows)
     _write_csv(part3 / "global_residuals.csv", residual_rows)
+    multitrack = assess_multitrack_manifest(source_rows)
+    _write_json(
+        part4 / "validation" / "multitrack_readiness.json",
+        {**multitrack, "folds": leave_one_track_out([row["track_id"] for row in source_rows])},
+    )
 
     _write_json(
         part1 / "bootstrap_protocol.json",
@@ -372,7 +399,7 @@ Important interpretation notes:
         {
             "pinn_trained": False,
             "available_models": len(snapshots),
-            "available_stellar_tracks": 1,
+            "available_stellar_tracks": len(jobs),
             "paper_target_models": 50000,
             "architecture_implemented": True,
             "split_required": {"training_percent": 70, "validation_percent": 15, "test_percent": 15},
@@ -404,6 +431,8 @@ Important interpretation notes:
             ),
             "hydrostatic_pass_count": sum(row["hydrostatic_ok_5_percent"] for row in quality_rows),
             "hydrostatic_fail_count": sum(not row["hydrostatic_ok_5_percent"] for row in quality_rows),
+            "external_multitrack_ready": multitrack["ready"],
+            "external_multitrack_errors": multitrack["errors"],
             "test_command": ".venv\\Scripts\\python.exe -m pytest -q",
             "python_version": platform.python_version(),
         },
@@ -412,7 +441,7 @@ Important interpretation notes:
         part4 / "monitoring" / "reproducibility.json",
         {
             "builder": "scripts/build_paper_report_data.py",
-            "source_job": _display_path(job),
+            "source_jobs": [_display_path(source_job) for source_job in jobs],
             "deterministic_steps": "Steps 1-5 and 8-10",
             "stochastic_step": "Step 7 bootstrap; random seed must be recorded when run",
             "generated_file_count": sum(1 for path in output.rglob("*") if path.is_file()),
@@ -452,11 +481,12 @@ Important interpretation notes:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    parser.add_argument("--extra-job", type=Path, action="append", default=[], help="additional MESA-Web track directory")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--bootstrap", type=int, default=0, metavar="RESAMPLES")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    build(args.job, args.output, args.bootstrap, args.seed)
+    build(args.job, args.output, args.bootstrap, args.seed, args.extra_job)
     print(args.output.resolve())
 
 

@@ -1,7 +1,9 @@
 {
   "builder": "scripts/build_paper_report_data.py",
-  "source_job": "data/raw/MESA-Web_Job_03242664908",
+  "source_jobs": [
+    "data/raw/MESA-Web_Job_03242664908"
+  ],
   "deterministic_steps": "Steps 1-5 and 8-10",
   "stochastic_step": "Step 7 bootstrap; random seed must be recorded when run",
-  "generated_file_count": 26
+  "generated_file_count": 27
 }
