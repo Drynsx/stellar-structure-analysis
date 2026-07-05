@@ -9,10 +9,13 @@ import sys
 
 import numpy as np
 import pandas as pd
+from rich.panel import Panel
 
 from stellar_analyzer.core.data_loader import list_mesa_profiles
 from stellar_analyzer.core.pipeline import analyze_mesa_job, analyze_profile, analyze_star, batch_analyze
-from stellar_analyzer.ui import banner, console, show_analysis, show_error, show_profiles, success
+from stellar_analyzer.ui import (
+    banner, command_header, console, show_analysis, show_error, show_profiles, show_workflow, success,
+)
 from stellar_analyzer.visualization import PLOT_FIELDS
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_JOB = ROOT / "data" / "raw" / "MESA-Web_Job_03242664908"
@@ -25,7 +28,8 @@ def _ask(prompt: str, *, default: str | None = None, choices: tuple[str, ...] = 
     if choices:
         suffix += f" ({'/'.join(choices)})"
     while True:
-        value = input(f"{prompt}{suffix}: ").strip()
+        console.print(f"[muted]{prompt}{suffix}[/muted]")
+        value = input("> ").strip()
         value = value or default or ""
         if value and (not choices or value in choices):
             return value
@@ -34,7 +38,9 @@ def _ask(prompt: str, *, default: str | None = None, choices: tuple[str, ...] = 
 
 def _run_guide(_args) -> None:
     """Build and run a common command through a step-by-step prompt."""
-    console.print("\n[title]Guided command builder[/title]")
+    command_header("guide", "Guided command builder")
+    console.print(Panel("Answer each field, or press Enter to accept the suggested value.",
+                        title="[label] Guided setup [/label]", title_align="left", border_style="grey35"))
     task = _ask("What would you like to do", default="analyze", choices=("analyze", "plot", "profiles"))
     if task == "profiles":
         argv = ["profiles"]
@@ -91,6 +97,7 @@ def _run_profiles(args) -> None:
     if args.json:
         _write_json(snapshots)
         return
+    command_header("profiles", "MESA-Web snapshots")
     show_profiles(snapshots)
 
 
@@ -106,6 +113,9 @@ def _run_analyze(args) -> None:
     if args.output or args.json:
         _write_json(selected, args.output)
     else:
+        command_header("analyze", result["source"].get("type", args.source))
+        show_workflow(["Loaded stellar profile", "Validated and normalized 500 radial samples",
+                       "Fitted global and piecewise polytropes", "Calculated physical deviations"])
         show_analysis(result)
 
 
@@ -124,6 +134,7 @@ def _run_plot(args) -> None:
 
 
 def _run_batch(args) -> None:
+    command_header("batch", Path(args.input).name)
     frame = pd.read_csv(args.input)
     result = batch_analyze(frame)
     output = Path(args.output)
@@ -146,6 +157,10 @@ def _run_uncertainty(args) -> None:
         bootstrap["samples"] = samples.tolist()
     bootstrap["profile"] = args.profile
     bootstrap["job"] = str(args.job)
+    if args.output:
+        command_header("uncertainty", f"profile {args.profile}")
+        show_workflow([f"Completed {bootstrap['n_success']} / {bootstrap['requested_resamples']} resampled fits",
+                       "Calculated the 95% confidence interval"])
     _write_json(bootstrap, str(args.output) if args.output else None)
 
 
