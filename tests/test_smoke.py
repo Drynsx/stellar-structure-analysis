@@ -4,6 +4,7 @@ from stellar_analyzer.core.deviation_drivers import calculate_delta_n_conv
 from stellar_analyzer.core.constants import G_CGS
 from stellar_analyzer.core.global_fit import fit_global_polytrope, solve_lane_emden_rk4
 from stellar_analyzer.core.pipeline import analyze_mesa_job
+from stellar_analyzer.core.piecewise_fit import fit_piecewise
 from stellar_analyzer.core.preprocess import preprocess_profile
 
 import numpy as np
@@ -67,6 +68,8 @@ def test_young_mesa_profile_has_reasonable_residual_and_hydrostatic_check():
     assert -5.0 <= result["anomaly_score"] <= 5.0
     assert result["deviation_factors"]["delta_n_conv"] <= 12.0
     assert result["preprocessing"]["hydrostatic_ok"] is True
+    assert result["piecewise_fit"]["success"] is True
+    assert max(result["piecewise_fit"]["continuity_errors"].values()) < 1e-6
 
 
 def test_global_fit_recovers_physical_polytrope_parameters():
@@ -84,3 +87,9 @@ def test_global_fit_recovers_physical_polytrope_parameters():
     assert np.isclose(fit.rho_c, rho_c_true, rtol=0.03)
     assert np.isclose(fit.alpha, alpha_true, rtol=0.03)
     assert np.isclose(fit.K, expected_k, rtol=0.08)
+
+
+def test_piecewise_fit_rejects_undersampled_profiles():
+    radius = np.linspace(0.0, 1.0, 11)
+    with np.testing.assert_raises_regex(ValueError, "at least 12"):
+        fit_piecewise(radius, np.ones(11), np.ones(11), np.ones(11), np.ones(11))

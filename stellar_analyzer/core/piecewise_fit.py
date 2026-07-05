@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 try:
-    from scipy.optimize import least_squares
+    from scipy.optimize import minimize
 except Exception:  # pragma: no cover - minimal/broken local environments.
-    least_squares = None
+    minimize = None
 
 
 @dataclass
@@ -20,6 +20,8 @@ class PiecewiseFitResult:
     chi2_piecewise: float
     continuity_errors: dict[str, float] = field(default_factory=dict)
     beats_global: bool | None = None
+    success: bool = True
+    message: str = ""
 
     def __iter__(self):
         yield self.n_core
@@ -29,10 +31,11 @@ class PiecewiseFitResult:
 
 
 def _labels(radius_fraction: np.ndarray, grad_ad: np.ndarray, grad_rad: np.ndarray) -> np.ndarray:
+    """Assign the Chapter 3 radial zones, confirming convection in the envelope."""
     labels = np.full(radius_fraction.shape, 1, dtype=int)
     labels[radius_fraction < 0.25] = 0
     labels[radius_fraction >= 0.70] = 2
-    labels[grad_rad > grad_ad] = 2
+    labels[(radius_fraction >= 0.70) & (grad_rad > grad_ad)] = 2
     return labels
 
 
@@ -50,7 +53,7 @@ def fit_piecewise(
     grad_rad: np.ndarray,
     global_chi2: float | None = None,
 ) -> PiecewiseFitResult:
-    """Fit core, radiative, and convective polytropes with continuity penalties."""
+    """Fit zonal polytropes subject to exact pressure-continuity constraints."""
 
     radius = np.asarray(r_array, dtype=float)
     rho = np.clip(np.asarray(rho_array, dtype=float), 1e-300, None)
@@ -79,8 +82,7 @@ def fit_piecewise(
     zone_masks = [labels == idx for idx in range(3)]
     for idx, mask in enumerate(zone_masks):
         if mask.sum() < 3:
-            fallback = [(rfrac < 0.25), ((rfrac >= 0.25) & (rfrac < 0.70)), (rfrac >= 0.70)][idx]
-            zone_masks[idx] = fallback
+            raise ValueError(f"Piecewise zone {idx} requires at least three samples")
 
     def residual(params: np.ndarray) -> np.ndarray:
         gammas = params[:3]
@@ -93,31 +95,39 @@ def fit_piecewise(
             pred = log_ks[idx] + gammas[idx] * log_rho[mask]
             pieces.append((log_p[mask] - pred) / sigma[mask])
 
-        penalties = []
+        return np.concatenate(pieces)
+
+    def continuity(params: np.ndarray) -> np.ndarray:
+        values = []
         for boundary, pair in ((0.25, (0, 1)), (0.70, (1, 2))):
             boundary_log_rho = float(np.interp(boundary, rfrac, log_rho))
             left = params[3 + pair[0]] + params[pair[0]] * boundary_log_rho
             right = params[3 + pair[1]] + params[pair[1]] * boundary_log_rho
-            penalties.append(np.sqrt(50.0) * (left - right))
-        pieces.append(np.asarray(penalties))
-        return np.concatenate(pieces)
+            values.append(left - right)
+        return np.asarray(values)
 
     initial_gamma = np.array([5.0 / 3.0, 4.0 / 3.0, 5.0 / 3.0])
     initial_log_k = np.array([
         float(np.nanmedian(log_p[mask] - initial_gamma[idx] * log_rho[mask])) if mask.any() else 0.0
         for idx, mask in enumerate(zone_masks)
     ])
+    for boundary, left, right in ((0.25, 0, 1), (0.70, 1, 2)):
+        boundary_log_rho = float(np.interp(boundary, rfrac, log_rho))
+        initial_log_k[right] = initial_log_k[left] + (initial_gamma[left] - initial_gamma[right]) * boundary_log_rho
     x0 = np.concatenate([initial_gamma, initial_log_k])
-    if least_squares is not None:
-        result = least_squares(residual, x0, method="lm", max_nfev=300)
-        x_fit = result.x
-    else:
-        x_fit = x0.copy()
-        for idx, mask in enumerate(zone_masks):
-            if mask.sum() >= 2:
-                coeff = np.polyfit(log_rho[mask], log_p[mask], deg=1)
-                x_fit[idx] = coeff[0]
-                x_fit[3 + idx] = coeff[1]
+    if minimize is None:
+        raise ImportError("SciPy is required for equality-constrained piecewise fitting")
+    result = minimize(
+        lambda params: float(np.sum(residual(params) ** 2)),
+        x0,
+        method="SLSQP",
+        constraints={"type": "eq", "fun": continuity},
+        options={"maxiter": 1000, "ftol": 1e-12},
+    )
+    x_fit = np.asarray(result.x)
+    constraint_error = float(np.max(np.abs(continuity(x_fit))))
+    if not result.success or constraint_error > 1e-8:
+        raise RuntimeError(f"Piecewise constrained fit failed: {result.message}; continuity error={constraint_error:.3e}")
 
     gammas = x_fit[:3]
     chi2 = float(np.sum(residual(x_fit) ** 2) / max(len(radius) - 6, 1))
@@ -126,7 +136,8 @@ def fit_piecewise(
         boundary_log_rho = float(np.interp(boundary, rfrac, log_rho))
         left = x_fit[3 + pair[0]] + x_fit[pair[0]] * boundary_log_rho
         right = x_fit[3 + pair[1]] + x_fit[pair[1]] * boundary_log_rho
-        errors[name] = float(np.exp(left) - np.exp(right))
+        scale = max(abs(float(np.exp(left))), abs(float(np.exp(right))), 1e-300)
+        errors[name] = float(abs(np.exp(left) - np.exp(right)) / scale)
 
     return PiecewiseFitResult(
         n_core=_n_from_gamma(float(gammas[0])),
@@ -135,4 +146,6 @@ def fit_piecewise(
         chi2_piecewise=chi2,
         continuity_errors=errors,
         beats_global=None if global_chi2 is None else bool(chi2 < global_chi2),
+        success=bool(result.success),
+        message=str(result.message),
     )
