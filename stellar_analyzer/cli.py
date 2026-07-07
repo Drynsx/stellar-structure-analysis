@@ -165,13 +165,14 @@ def _run_uncertainty(args) -> None:
 
 
 def _run_prepare(args) -> None:
-    from stellar_analyzer.ml.training_data import prepare_hdf5_grid_dataset, prepare_mesa_dataset
+    from stellar_analyzer.ml.training_data import prepare_hdf5_grid_dataset, prepare_mesa_datasets
 
     if args.grid:
         output = args.output or ROOT / "data" / "processed" / "pinn_grid.h5"
         _write_json(prepare_hdf5_grid_dataset(args.grid, output, args.points, args.limit))
     else:
-        _write_json(prepare_mesa_dataset(args.job, args.output or DEFAULT_DATASET, args.points))
+        jobs = args.job or [DEFAULT_JOB]
+        _write_json(prepare_mesa_datasets(jobs, args.output or DEFAULT_DATASET, args.points, args.min_samples))
 
 
 def _training_config(args):
@@ -322,12 +323,19 @@ def build_parser() -> argparse.ArgumentParser:
     uncertainty.add_argument("--include-samples", action="store_true")
     uncertainty.set_defaults(func=_run_uncertainty)
 
-    prepare = commands.add_parser("prepare-pinn", help="build a PINN dataset from a MESA-Web job")
-    prepare.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    prepare = commands.add_parser("prepare-pinn", help="build a PINN dataset from one or more MESA-Web jobs")
+    prepare.add_argument(
+        "--job",
+        type=Path,
+        action="append",
+        default=None,
+        help="MESA-Web job folder; repeat for multiple stars/tracks",
+    )
     prepare.add_argument("--grid", type=Path, help="radial-profile HDF5 grid (overrides --job)")
     prepare.add_argument("--output", type=Path)
     prepare.add_argument("--points", type=int, default=500)
     prepare.add_argument("--limit", type=int, help="prepare only the first N HDF5 profiles")
+    prepare.add_argument("--min-samples", type=int, default=3, help="fail unless at least this many profiles are found")
     prepare.set_defaults(func=_run_prepare)
 
     info = commands.add_parser("dataset-info", help="inspect a prepared PINN dataset")

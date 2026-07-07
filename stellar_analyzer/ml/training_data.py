@@ -49,38 +49,63 @@ def build_model_tensors(model: StellarModel, n_points: int):
     return feature, target_profile, transform_delta_n(raw_delta).astype(np.float32), raw_delta, n_global
 
 
-def prepare_mesa_dataset(job_path: str | Path, output_path: str | Path, n_points: int = 500) -> dict:
-    """Convert every snapshot in a MESA-Web job into sequence tensors."""
+def prepare_mesa_datasets(
+    job_paths: list[str | Path] | tuple[str | Path, ...],
+    output_path: str | Path,
+    n_points: int = 500,
+    min_samples: int = 3,
+) -> dict:
+    """Convert snapshots from one or more MESA-Web jobs into sequence tensors."""
 
-    job = Path(job_path)
-    snapshots = list_mesa_profiles(job)
-    if len(snapshots) < 3:
-        raise ValueError("At least three independent snapshots are required for train/validation/test splits")
+    jobs = [Path(job) for job in job_paths]
+    if not jobs:
+        raise ValueError("At least one MESA-Web job directory is required")
 
     features, profile_targets, delta_targets, n_indices = [], [], [], []
-    profile_numbers, model_numbers = [], []
-    for snapshot in snapshots:
-        model = load_mesa_web_job(job, snapshot["profile_number"])
-        feature, target_profile, delta, raw_delta, n_global = build_model_tensors(model, n_points)
+    profile_numbers, model_numbers, job_indices = [], [], []
+    source_jobs: list[str] = []
+    snapshots_per_job: dict[str, int] = {}
+    for job_index, job in enumerate(jobs):
+        snapshots = list_mesa_profiles(job)
+        source_job = _portable_source_path(job)
+        source_jobs.append(source_job)
+        snapshots_per_job[source_job] = len(snapshots)
+        for snapshot in snapshots:
+            model = load_mesa_web_job(job, snapshot["profile_number"])
+            feature, target_profile, delta, raw_delta, n_global = build_model_tensors(model, n_points)
 
-        features.append(feature)
-        profile_targets.append(target_profile)
-        delta_targets.append(raw_delta)
-        n_indices.append(n_global)
-        profile_numbers.append(snapshot["profile_number"])
-        model_numbers.append(snapshot["model_number"])
+            features.append(feature)
+            profile_targets.append(target_profile)
+            delta_targets.append(raw_delta)
+            n_indices.append(n_global)
+            profile_numbers.append(snapshot["profile_number"])
+            model_numbers.append(snapshot["model_number"])
+            job_indices.append(job_index)
+
+    sample_count = len(features)
+    if sample_count < min_samples:
+        raise ValueError(
+            f"At least {min_samples} MESA profiles are required; found {sample_count}. "
+            "Add more completed MESA-Web job folders or lower --min-samples for a smoke test."
+        )
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     metadata = {
-        "source_job": _portable_source_path(job),
-        "samples": len(snapshots),
+        "source_jobs": source_jobs,
+        "source_job": source_jobs[0] if len(source_jobs) == 1 else None,
+        "track_count": len(jobs),
+        "samples": sample_count,
+        "snapshots_per_job": snapshots_per_job,
         "radial_points": n_points,
         "feature_count": 15,
         "target_schema": TARGET_SCHEMA,
         "delta_names": DELTA_NAMES,
         "delta_transform": "sign(x) * log1p(abs(x)); inverse: sign(y) * expm1(abs(y))",
-        "generalization_warning": "One stellar track is suitable for pipeline validation, not a production model.",
+        "minimum_samples_required": min_samples,
+        "generalization_warning": (
+            "Use multiple stellar tracks for a defensible model; one track is only suitable for pipeline validation."
+        ),
     }
     np.savez_compressed(
         output,
@@ -91,9 +116,21 @@ def prepare_mesa_dataset(job_path: str | Path, output_path: str | Path, n_points
         n_index=np.asarray(n_indices, dtype=np.float32),
         profile_number=np.asarray(profile_numbers, dtype=np.int32),
         model_number=np.asarray(model_numbers, dtype=np.int32),
+        job_index=np.asarray(job_indices, dtype=np.int32),
         metadata=np.asarray(json.dumps(metadata)),
     )
     return {**metadata, "output": str(output), "shape": list(np.stack(features).shape)}
+
+
+def prepare_mesa_dataset(
+    job_path: str | Path,
+    output_path: str | Path,
+    n_points: int = 500,
+    min_samples: int = 3,
+) -> dict:
+    """Convert every snapshot in a single MESA-Web job into sequence tensors."""
+
+    return prepare_mesa_datasets([job_path], output_path, n_points=n_points, min_samples=min_samples)
 
 
 def prepare_hdf5_grid_dataset(

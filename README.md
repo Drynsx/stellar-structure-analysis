@@ -101,6 +101,22 @@ optimization and are converted back to physical values for prediction output.
 .\stellar train-pinn --config configs\pinn_training.json
 ```
 
+For the 150-profile training requirement, use at least eight MESA-Web stellar
+tracks and fail fast if fewer than 150 profiles are present:
+
+```powershell
+.\stellar prepare-pinn `
+  --job data\raw\MESA-Web_0.8M `
+  --job data\raw\MESA-Web_1.0M `
+  --job data\raw\MESA-Web_1.2M `
+  --job data\raw\MESA-Web_1.5M `
+  --job data\raw\MESA-Web_2.0M `
+  --job data\raw\MESA-Web_3.0M `
+  --job data\raw\MESA-Web_4.0M `
+  --job data\raw\MESA-Web_5.0M `
+  --min-samples 150
+```
+
 Training uses deterministic profile-level train/validation/test splits,
 supervised profile and deviation losses, a Lane-Emden residual computed from
 the model prediction, early stopping, and a metadata-rich checkpoint. A quick

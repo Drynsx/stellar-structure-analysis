@@ -11,7 +11,7 @@ from stellar_analyzer.visualization import create_figure
 from stellar_analyzer.ml.pinn_model import (
     Hdf5StellarDataset, StellarPINN, build_differentiable_features, physics_residual_loss,
 )
-from stellar_analyzer.ml.training_data import inspect_dataset, prepare_hdf5_grid_dataset
+from stellar_analyzer.ml.training_data import inspect_dataset, prepare_hdf5_grid_dataset, prepare_mesa_datasets
 
 
 ROOT = Path(__file__).parents[1]
@@ -36,8 +36,14 @@ def test_cli_parses_mesa_analysis_and_training_commands():
     parser = build_parser()
     analysis = parser.parse_args(["analyze", "mesa", "--profile", "8"])
     training = parser.parse_args(["train-pinn", "--epochs", "2", "--device", "cpu"])
+    prepare = parser.parse_args([
+        "prepare-pinn", "--job", "data/raw/MESA-Web_0.8M", "--job", "data/raw/MESA-Web_1.0M",
+        "--min-samples", "150",
+    ])
     assert analysis.profile == 8
     assert training.epochs == 2
+    assert len(prepare.job) == 2
+    assert prepare.min_samples == 150
     validation = parser.parse_args(["validate-pinn", "--profile", "2"])
     assert validation.profile == 2
 
@@ -116,6 +122,18 @@ def test_prepared_dataset_has_expected_schema():
         assert np.isfinite(data["profiles"]).all()
         assert np.isfinite(data["delta_n"]).all()
         assert "delta_n_raw" in data
+
+
+def test_multi_job_mesa_dataset_records_track_metadata(tmp_path):
+    job = ROOT / "data" / "raw" / "MESA-Web_Job_03242664908"
+    output = tmp_path / "multi_job_dataset.npz"
+    result = prepare_mesa_datasets([job, job], output, n_points=64, min_samples=16)
+    metadata = inspect_dataset(output)
+    assert result["samples"] == metadata["samples"] == 16
+    assert metadata["track_count"] == 2
+    assert metadata["features_shape"] == [16, 64, 15]
+    with np.load(output, allow_pickle=False) as data:
+        assert set(data["job_index"].tolist()) == {0, 1}
 
 
 def test_hdf5_profile_grid_is_prepared_and_read_lazily(tmp_path):
