@@ -41,17 +41,55 @@ physical drivers explain them.
 - PINN dataset preparation and training scaffolding.
 - Chapter 3 evidence package under `paper_report_data/`.
 
-## Install
+## Install and run
+
+Recommended local setup on Windows PowerShell:
 
 ```powershell
-python -m venv .venv
+py -3.10 -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-Run commands through the repository launcher:
+Recommended local setup on macOS/Linux:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ".[dev]"
+```
+
+After installation, every user can run the installed console command:
+
+```powershell
+stellar-analyzer --help
+```
+
+If the console command is not on PATH, use the universal Python module form:
+
+```powershell
+python -m stellar_analyzer --help
+```
+
+On Windows, this repository also includes a shortcut launcher:
 
 ```powershell
 .\stellar --help
+```
+
+For a user-level install outside this repository, install directly from GitHub:
+
+```powershell
+python -m pip install "git+https://github.com/Drynsx/stellar-structure-analysis.git"
+stellar-analyzer --help
+```
+
+For isolated command-line installation with `pipx`:
+
+```powershell
+python -m pip install --user pipx
+python -m pipx ensurepath
+pipx install "git+https://github.com/Drynsx/stellar-structure-analysis.git"
+stellar-analyzer --help
 ```
 
 For a guided workflow:

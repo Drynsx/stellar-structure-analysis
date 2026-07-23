@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import subprocess
+import sys
 from unittest.mock import patch
 
 import numpy as np
@@ -16,6 +18,17 @@ from stellar_analyzer.ml.training_data import inspect_dataset, prepare_hdf5_grid
 
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_python_module_entrypoint_runs_cli_version():
+    result = subprocess.run(
+        [sys.executable, "-m", "stellar_analyzer", "--version"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "stellar-analyzer 0.3.0" in result.stdout
 
 
 def test_bootstrap_is_deterministic_and_reports_validity():
