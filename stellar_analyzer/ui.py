@@ -52,6 +52,28 @@ def success(message: str) -> None:
     console.print(f"[good]>[/good] {message}")
 
 
+def show_command_guide(command: str, rows: list[tuple[str, str]], examples: list[str]) -> None:
+    """Render a compact command guide using the same terminal styling."""
+
+    table = Table(header_style="muted_bold", border_style="grey35", box=None,
+                  padding=(0, 2), expand=True)
+    table.add_column("Field")
+    table.add_column("What to type")
+    for field, description in rows:
+        table.add_row(field, description)
+    body = Table.grid(expand=True)
+    body.add_row(table)
+    if examples:
+        body.add_row("")
+        body.add_row(Text("Examples", style="muted_bold"))
+        for example in examples:
+            text = Text("> ", style="good")
+            text.append(example, style="accent")
+            body.add_row(text)
+    console.print(Panel(body, title=f"[label] stellar {command} guide [/label]",
+                        title_align="left", border_style="grey35", box=box.ROUNDED, padding=(1, 2)))
+
+
 def show_profiles(snapshots: list[dict[str, Any]]) -> None:
     table = Table(header_style="muted_bold", border_style="grey35", box=None,
                   padding=(0, 2), expand=True)

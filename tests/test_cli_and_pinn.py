@@ -48,6 +48,7 @@ def test_cli_parses_mesa_analysis_and_training_commands():
     parser = build_parser()
     analysis = parser.parse_args(["analyze", "mesa", "--profile", "8"])
     screen = parser.parse_args(["screen", "mesa", "--profile", "2", "--profile", "8", "--format", "csv"])
+    screen_folder = parser.parse_args(["screen", "folder", "data/uploads/mist", "--format", "json"])
     training = parser.parse_args(["train-pinn", "--epochs", "2", "--device", "cpu"])
     prepare = parser.parse_args([
         "prepare-pinn", "--job", "data/raw/MESA-Web_0.8M", "--job", "data/raw/MESA-Web_1.0M",
@@ -56,6 +57,7 @@ def test_cli_parses_mesa_analysis_and_training_commands():
     assert analysis.profile == 8
     assert screen.profile == [2, 8]
     assert screen.format == "csv"
+    assert screen_folder.folder == Path("data/uploads/mist")
     assert training.epochs == 2
     assert len(prepare.job) == 2
     assert prepare.min_samples == 150
@@ -70,6 +72,16 @@ def test_cli_guide_builds_and_runs_a_command(capsys):
     assert "Guided command builder" in output
     assert ".\\stellar profiles" in output
     assert "8 snapshots available" in output
+
+
+def test_cli_command_guides_use_rich_ui(capsys):
+    assert main(["help", "screen"]) == 0
+    output = capsys.readouterr().out
+    assert "stellar screen guide" in output
+    assert "screen folder" in output
+    assert main(["batch", "--guide"]) == 0
+    output = capsys.readouterr().out
+    assert "stellar batch guide" in output
 
 
 def test_cli_analyzes_mesa_to_json(tmp_path):
@@ -120,6 +132,19 @@ def test_cli_screens_mesa_profiles_as_csv_array(tmp_path):
     frame = __import__("pandas").read_csv(output)
     assert frame["star_profile_id"].tolist() == ["profile_2", "profile_8"]
     assert frame["classification"].eq("Normal").all()
+
+
+def test_cli_screens_folder_upload_as_anomaly_array(tmp_path):
+    source = ROOT / "data" / "raw" / "MESA-Web_Job_03242664908" / "profile8.data"
+    upload = tmp_path / "mist_upload"
+    upload.mkdir()
+    target = upload / "uploaded_profile.data"
+    target.write_bytes(source.read_bytes())
+    output = tmp_path / "folder_anomalies.json"
+    assert main(["screen", "folder", str(upload), "--output", str(output)]) == 0
+    records = json.loads(output.read_text(encoding="utf-8"))
+    assert len(records) == 1
+    assert records[0]["star_profile_id"] == "uploaded_profile"
 
 
 def test_cli_opens_desktop_graph_window_by_default():

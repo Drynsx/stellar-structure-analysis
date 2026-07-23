@@ -89,6 +89,16 @@ classification, and a diagnostic reason. A star is flagged only when
 .\stellar screen catalog stars.csv --format csv --output outputs\anomaly_array.csv
 .\stellar screen mesa --output outputs\mesa_anomaly_array.json
 .\stellar screen mesa --profile 2 --profile 8 --format csv --output outputs\selected_profiles.csv
+.\stellar screen folder data\uploads\mist --format csv --output outputs\mist_anomaly_array.csv
+```
+
+Every command also has a compact guide card using the same terminal UI:
+
+```powershell
+.\stellar help screen
+.\stellar screen --guide
+.\stellar analyze --guide
+.\stellar help all
 ```
 
 Run a reproducible 1,000-resample uncertainty analysis for a MESA snapshot:
