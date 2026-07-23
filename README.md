@@ -92,12 +92,19 @@ classification, and a diagnostic reason. A star is flagged only when
 .\stellar screen folder data\uploads\mist --format csv --output outputs\mist_anomaly_array.csv
 ```
 
-Every command also has a compact guide card using the same terminal UI:
+Every command also has a question-style guide using the same terminal UI. It
+asks what to type next, builds the command, shows it, and runs it:
+
+```powershell
+.\stellar screen --guide
+.\stellar analyze --guide
+.\stellar batch --guide
+```
+
+For a quick non-interactive reference card, use:
 
 ```powershell
 .\stellar help screen
-.\stellar screen --guide
-.\stellar analyze --guide
 .\stellar help all
 ```
 

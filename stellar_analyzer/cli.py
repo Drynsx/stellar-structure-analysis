@@ -118,6 +118,100 @@ def _run_guide(_args) -> None:
         raise RuntimeError("The guided command did not complete successfully.")
 
 
+def _run_command_guide(command: str) -> None:
+    """Run a command-specific question guide and execute the built command."""
+
+    command_header(command, "Guided command builder")
+    console.print(Panel("Answer each field, or press Enter to accept the suggested value.",
+                        title="[label] Guided setup [/label]", title_align="left", border_style="grey35"))
+    if command == "profiles":
+        argv = ["profiles", "--job", _ask("MESA-Web job folder", default=str(DEFAULT_JOB))]
+    elif command == "analyze":
+        source = _ask("What kind of input", default="mesa", choices=("mesa", "star", "profile"))
+        argv = ["analyze", source]
+        if source == "mesa":
+            argv += ["--job", _ask("MESA-Web job folder", default=str(DEFAULT_JOB))]
+            argv += ["--profile", _ask("Profile number", default="8")]
+        elif source == "star":
+            argv += [
+                "--name", _ask("Star name", default="Custom Star"),
+                "--mass", _ask("Mass in solar masses", default="1"),
+                "--teff", _ask("Effective temperature in kelvin", default="5778"),
+                "--metallicity", _ask("Metallicity [Fe/H]", default="0"),
+                "--age", _ask("Age in billions of years", default="4.6"),
+            ]
+        else:
+            argv += [_ask("Path to uploaded profile file")]
+        output = _ask("Output JSON path; type skip to print normally", default="skip")
+        if output.lower() != "skip":
+            argv += ["--output", output]
+    elif command == "screen":
+        source = _ask("What are users uploading", default="folder", choices=("folder", "catalog", "mesa", "profile"))
+        argv = ["screen", source]
+        if source == "folder":
+            argv += [_ask("Folder containing MIST/profile files", default="data\\uploads\\mist")]
+        elif source == "catalog":
+            argv += [_ask("CSV catalog path", default="stars.csv")]
+        elif source == "mesa":
+            argv += ["--job", _ask("MESA-Web job folder", default=str(DEFAULT_JOB))]
+            profiles = _ask("Profile numbers, comma-separated; type all for every profile", default="all")
+            if profiles.lower() != "all":
+                for profile in [item.strip() for item in profiles.split(",") if item.strip()]:
+                    argv += ["--profile", profile]
+        else:
+            files = _ask("Profile file paths, comma-separated")
+            argv += [item.strip() for item in files.split(",") if item.strip()]
+        fmt = _ask("Output format", default="json", choices=("json", "csv"))
+        output = _ask("Output path", default=f"outputs\\{source}_anomaly_array.{fmt}")
+        argv += ["--format", fmt, "--output", output]
+    elif command == "plot":
+        field = _ask("Which graph", default="density", choices=tuple(PLOT_FIELDS))
+        argv = ["plot", field, "--profile", _ask("MESA profile number", default="8")]
+        save = _ask("PNG save path; type skip to only open the graph", default="skip")
+        if save.lower() != "skip":
+            argv += ["--save", save]
+    elif command == "batch":
+        argv = ["batch", _ask("CSV catalog path", default="stars.csv"), "--output", _ask("Output CSV path", default="outputs\\catalog_results.csv")]
+    elif command == "uncertainty":
+        argv = [
+            "uncertainty",
+            "--profile", _ask("MESA profile number", default="8"),
+            "--bootstrap", _ask("Bootstrap resamples", default="1000"),
+            "--seed", _ask("Random seed", default="42"),
+            "--output", _ask("Output JSON path", default="outputs\\uncertainty.json"),
+        ]
+    elif command == "prepare-pinn":
+        jobs = _ask("MESA-Web job folders, comma-separated", default=str(DEFAULT_JOB))
+        argv = ["prepare-pinn"]
+        for job in [item.strip() for item in jobs.split(",") if item.strip()]:
+            argv += ["--job", job]
+        argv += ["--min-samples", _ask("Minimum profiles required", default="3")]
+    elif command == "dataset-info":
+        argv = ["dataset-info", _ask("Dataset path", default=str(DEFAULT_DATASET))]
+    elif command == "train-pinn":
+        argv = ["train-pinn", "--config", _ask("Training config path", default="configs\\pinn_training.json")]
+        epochs = _ask("Epoch override; type skip to use config", default="skip")
+        if epochs.lower() != "skip":
+            argv += ["--epochs", epochs]
+    elif command == "predict":
+        argv = [
+            "predict",
+            "--mass", _ask("Mass in solar masses", default="1"),
+            "--teff", _ask("Effective temperature in kelvin", default="5778"),
+            "--metallicity", _ask("Metallicity [Fe/H]", default="0"),
+            "--age", _ask("Age in billions of years", default="4.6"),
+            "--output", _ask("Output JSON path", default="outputs\\prediction.json"),
+        ]
+    elif command == "validate-pinn":
+        argv = ["validate-pinn", "--profile", _ask("MESA profile number", default="8")]
+    else:
+        raise ValueError(f"No interactive guide is defined for {command}")
+
+    console.print(f"\n[muted]Running:[/muted] [accent].\\stellar {' '.join(argv)}[/accent]\n")
+    if main(argv) != 0:
+        raise RuntimeError("The guided command did not complete successfully.")
+
+
 def _run_help(args) -> None:
     command = args.topic or "screen"
     if command == "all":
@@ -133,8 +227,7 @@ def _run_help(args) -> None:
 
 def _maybe_show_guide(args, command: str) -> bool:
     if getattr(args, "guide", False):
-        guide = COMMAND_GUIDES[command]
-        show_command_guide(command, guide["rows"], guide["examples"])
+        _run_command_guide(command)
         return True
     return False
 
@@ -608,8 +701,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if "--guide" in effective_argv:
             topic = next((item for item in effective_argv if item in COMMAND_GUIDES), "screen")
-            guide = COMMAND_GUIDES[topic]
-            show_command_guide(topic, guide["rows"], guide["examples"])
+            _run_command_guide(topic)
             return 0
         args = parser.parse_args(effective_argv)
         args.func(args)

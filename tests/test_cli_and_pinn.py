@@ -74,14 +74,20 @@ def test_cli_guide_builds_and_runs_a_command(capsys):
     assert "8 snapshots available" in output
 
 
-def test_cli_command_guides_use_rich_ui(capsys):
+def test_cli_command_guides_use_rich_ui(capsys, tmp_path):
     assert main(["help", "screen"]) == 0
     output = capsys.readouterr().out
     assert "stellar screen guide" in output
     assert "screen folder" in output
-    assert main(["batch", "--guide"]) == 0
+    catalog = tmp_path / "stars.csv"
+    output_path = tmp_path / "catalog_results.csv"
+    catalog.write_text("mass,teff,metallicity,age\n1,5778,0,4.6\n", encoding="utf-8")
+    with patch("builtins.input", side_effect=[str(catalog), str(output_path)]):
+        assert main(["batch", "--guide"]) == 0
     output = capsys.readouterr().out
-    assert "stellar batch guide" in output
+    assert "Guided command builder" in output
+    assert ".\\stellar batch" in output
+    assert output_path.is_file()
 
 
 def test_cli_analyzes_mesa_to_json(tmp_path):
