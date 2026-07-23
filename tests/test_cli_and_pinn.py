@@ -76,6 +76,10 @@ def test_cli_guide_builds_and_runs_a_command(capsys):
 
 
 def test_cli_command_guides_use_rich_ui(capsys, tmp_path):
+    assert main(["help"]) == 0
+    output = capsys.readouterr().out
+    assert "stellar help guide" in output
+    assert "stellar screen guide" not in output
     assert main(["help", "screen"]) == 0
     output = capsys.readouterr().out
     assert "stellar screen guide" in output

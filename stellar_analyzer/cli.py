@@ -217,7 +217,23 @@ def _run_command_guide(command: str) -> None:
 
 
 def _run_help(args) -> None:
-    command = args.topic or "screen"
+    command = args.topic
+    if command is None:
+        rows = [
+            (name, "interactive: " + guide["examples"][0].replace(".\\stellar ", ".\\stellar ") + "  |  use --guide to answer questions")
+            for name, guide in COMMAND_GUIDES.items()
+        ]
+        show_command_guide(
+            "help",
+            rows,
+            [
+                ".\\stellar help screen",
+                ".\\stellar screen --guide",
+                ".\\stellar analyze --guide",
+                ".\\stellar help all",
+            ],
+        )
+        return
     if command == "all":
         for name in COMMAND_GUIDES:
             guide = COMMAND_GUIDES[name]
