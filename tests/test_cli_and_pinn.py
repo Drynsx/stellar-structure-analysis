@@ -47,7 +47,7 @@ def test_local_n_reports_full_fallback_instead_of_silent_flat_curve():
 def test_cli_parses_mesa_analysis_and_training_commands():
     parser = build_parser()
     analysis = parser.parse_args(["analyze", "mesa", "--profile", "8"])
-    screen = parser.parse_args(["screen", "mesa", "--profile", "2", "--profile", "8", "--format", "csv"])
+    screen = parser.parse_args(["screen", "mesa", "--profile", "2", "--profile", "8", "--format", "csv", "--terminal"])
     screen_folder = parser.parse_args(["screen", "folder", "data/uploads/mist", "--format", "json"])
     training = parser.parse_args(["train-pinn", "--epochs", "2", "--device", "cpu"])
     prepare = parser.parse_args([
@@ -57,6 +57,7 @@ def test_cli_parses_mesa_analysis_and_training_commands():
     assert analysis.profile == 8
     assert screen.profile == [2, 8]
     assert screen.format == "csv"
+    assert screen.terminal is True
     assert screen_folder.folder == Path("data/uploads/mist")
     assert training.epochs == 2
     assert len(prepare.job) == 2
@@ -88,6 +89,11 @@ def test_cli_command_guides_use_rich_ui(capsys, tmp_path):
     assert "Guided command builder" in output
     assert ".\\stellar batch" in output
     assert output_path.is_file()
+    with patch("builtins.input", side_effect=["catalog", str(catalog), "window"]):
+        with patch("stellar_analyzer.visualization.show_screen_window"):
+            assert main(["screen", "--guide"]) == 0
+    output = capsys.readouterr().out
+    assert ".\\stellar screen catalog" in output
 
 
 def test_cli_analyzes_mesa_to_json(tmp_path):
@@ -138,6 +144,14 @@ def test_cli_screens_mesa_profiles_as_csv_array(tmp_path):
     frame = __import__("pandas").read_csv(output)
     assert frame["star_profile_id"].tolist() == ["profile_2", "profile_8"]
     assert frame["classification"].eq("Normal").all()
+
+
+def test_cli_screens_to_desktop_window_by_default():
+    with patch("stellar_analyzer.visualization.show_screen_window") as show_window:
+        assert main(["screen", "mesa", "--profile", "8"]) == 0
+    show_window.assert_called_once()
+    records = show_window.call_args.args[0]
+    assert records[0]["star_profile_id"] == "profile_8"
 
 
 def test_cli_screens_folder_upload_as_anomaly_array(tmp_path):

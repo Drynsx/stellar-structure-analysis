@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import json
 
 import numpy as np
 
@@ -215,5 +216,144 @@ def show_plot_window(result: dict[str, Any], initial_field: str = "density") -> 
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=(8, 0))
         tabs[field] = tab
     notebook.select(tabs[initial_field])
+    root.bind("<Escape>", lambda _event: root.destroy())
+    root.mainloop()
+
+
+def show_screen_window(records: list[dict[str, Any]]) -> None:
+    """Open a native desktop window for anomaly-screening arrays."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog, messagebox, ttk
+    except ImportError as exc:
+        raise RuntimeError("The desktop anomaly window requires Tkinter.") from exc
+
+    if not records:
+        raise ValueError("No anomaly-screening records to display")
+
+    columns = (
+        "star_profile_id",
+        "mass",
+        "age_gyr",
+        "teff_k",
+        "n_global",
+        "delta_global",
+        "classification",
+        "diagnostic_reason",
+    )
+    headings = {
+        "star_profile_id": "Star/Profile",
+        "mass": "Mass",
+        "age_gyr": "Age (Gyr)",
+        "teff_k": "Teff (K)",
+        "n_global": "Global n",
+        "delta_global": "δ global",
+        "classification": "Class",
+        "diagnostic_reason": "Diagnostic reason",
+    }
+
+    def fmt(value: Any) -> str:
+        if isinstance(value, float):
+            return f"{value:.4g}"
+        if value is None:
+            return "-"
+        return str(value)
+
+    root = tk.Tk()
+    root.title("Stellar Analyzer — Anomaly Screening")
+    root.geometry("1180x720")
+    root.minsize(900, 540)
+    root.configure(bg="#F1F5F9")
+
+    style = ttk.Style(root)
+    if "vista" in style.theme_names():
+        style.theme_use("vista")
+    style.configure("Screen.Treeview", rowheight=30, font=("Segoe UI", 9), borderwidth=0)
+    style.configure("Screen.Treeview.Heading", font=("Segoe UI Semibold", 9), padding=(8, 8))
+    style.configure("TButton", padding=(10, 5), font=("Segoe UI", 9))
+
+    header = tk.Frame(root, bg="#0F172A", padx=24, pady=16)
+    header.pack(fill="x")
+    title_group = tk.Frame(header, bg="#0F172A")
+    title_group.pack(side="left")
+    tk.Label(title_group, text="Anomaly screening", bg="#0F172A", fg="#F8FAFC",
+             font=("Segoe UI Semibold", 18)).pack(anchor="w")
+    tk.Label(title_group, text="Global residual array and candidate identification", bg="#0F172A", fg="#94A3B8",
+             font=("Segoe UI", 9)).pack(anchor="w")
+    anomaly_count = sum(1 for row in records if row.get("classification") == "Anomaly")
+    badge = f"{len(records):,} stars  •  {anomaly_count:,} anomalies"
+    tk.Label(header, text=badge, bg="#1E293B", fg="#CBD5E1", padx=12, pady=6,
+             font=("Segoe UI Semibold", 9)).pack(side="right", pady=(5, 0))
+
+    metadata = tk.Frame(root, bg="#F1F5F9", padx=22, pady=12)
+    metadata.pack(fill="x")
+    _metric(metadata, "Rows", f"{len(records):,}")
+    _metric(metadata, "Anomalies", f"{anomaly_count:,}")
+    _metric(metadata, "Threshold", f"|δ| > {fmt(records[0].get('threshold', 5.0))}")
+
+    table_frame = tk.Frame(root, bg="#F8FAFC", padx=14, pady=14)
+    table_frame.pack(fill="both", expand=True)
+    tree = ttk.Treeview(table_frame, columns=columns, show="headings", style="Screen.Treeview")
+    widths = {
+        "star_profile_id": 170,
+        "mass": 80,
+        "age_gyr": 95,
+        "teff_k": 90,
+        "n_global": 90,
+        "delta_global": 95,
+        "classification": 95,
+        "diagnostic_reason": 430,
+    }
+    for column in columns:
+        tree.heading(column, text=headings[column])
+        tree.column(column, width=widths[column], anchor="w", stretch=column == "diagnostic_reason")
+    tree.tag_configure("normal", background="#FFFFFF", foreground="#0F172A")
+    tree.tag_configure("anomaly", background="#FEF3C7", foreground="#92400E")
+    for row in records:
+        tag = "anomaly" if row.get("classification") == "Anomaly" else "normal"
+        tree.insert("", "end", values=[fmt(row.get(column)) for column in columns], tags=(tag,))
+
+    y_scroll = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+    x_scroll = ttk.Scrollbar(table_frame, orient="horizontal", command=tree.xview)
+    tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    y_scroll.grid(row=0, column=1, sticky="ns")
+    x_scroll.grid(row=1, column=0, sticky="ew")
+    table_frame.grid_rowconfigure(0, weight=1)
+    table_frame.grid_columnconfigure(0, weight=1)
+
+    controls = tk.Frame(root, bg="#FFFFFF", padx=12, pady=8,
+                        highlightbackground="#E2E8F0", highlightthickness=1)
+    controls.pack(fill="x", padx=14, pady=(0, 14))
+    tk.Label(controls, text="ARRAY CONTROLS", bg="#FFFFFF", fg="#64748B",
+             font=("Segoe UI Semibold", 7)).pack(side="left", padx=(0, 12))
+
+    def save_json() -> None:
+        path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
+        if path:
+            Path(path).write_text(json.dumps(records, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
+            messagebox.showinfo("Saved", f"Saved anomaly array to {path}")
+
+    def save_csv() -> None:
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if path:
+            import pandas as pd
+            pd.DataFrame(records).to_csv(path, index=False)
+            messagebox.showinfo("Saved", f"Saved anomaly array to {path}")
+
+    ttk.Button(controls, text="Save JSON", command=save_json).pack(side="left", padx=(0, 6))
+    ttk.Button(controls, text="Save CSV", command=save_csv).pack(side="left", padx=(0, 6))
+    ttk.Button(controls, text="Close", command=root.destroy).pack(side="left", padx=(0, 6))
+    tk.Label(controls, text="Double-click a row to inspect the diagnostic reason  •  Esc: close",
+             bg="#FFFFFF", fg="#94A3B8", font=("Segoe UI", 8)).pack(side="right")
+
+    def inspect_row(_event=None) -> None:
+        selected = tree.selection()
+        if not selected:
+            return
+        values = tree.item(selected[0], "values")
+        messagebox.showinfo(str(values[0]), str(values[-1]))
+
+    tree.bind("<Double-1>", inspect_row)
     root.bind("<Escape>", lambda _event: root.destroy())
     root.mainloop()

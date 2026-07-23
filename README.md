@@ -79,12 +79,15 @@ For a catalog, provide CSV columns `mass`, `teff`, `metallicity`, and `age`:
 ```
 
 To use the system as an anomaly screener, provide a catalog or a set of MESA
-profiles and write the result as an array. Each row includes the fitted global
+profiles. Without `--output`, the result opens as a desktop anomaly-array table
+using the same visual style as `.\stellar plot`. Each row includes the fitted global
 index, the five deviation drivers, `delta_global`, the `Normal`/`Anomaly`
 classification, and a diagnostic reason. A star is flagged only when
 `|delta_global| > 5.0`.
 
 ```powershell
+.\stellar screen folder data\uploads\mist
+.\stellar screen mesa
 .\stellar screen catalog stars.csv --output outputs\anomaly_array.json
 .\stellar screen catalog stars.csv --format csv --output outputs\anomaly_array.csv
 .\stellar screen mesa --output outputs\mesa_anomaly_array.json

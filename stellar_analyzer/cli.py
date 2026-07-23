@@ -161,9 +161,13 @@ def _run_command_guide(command: str) -> None:
         else:
             files = _ask("Profile file paths, comma-separated")
             argv += [item.strip() for item in files.split(",") if item.strip()]
-        fmt = _ask("Output format", default="json", choices=("json", "csv"))
-        output = _ask("Output path", default=f"outputs\\{source}_anomaly_array.{fmt}")
-        argv += ["--format", fmt, "--output", output]
+        destination = _ask("Where should the anomaly array go", default="window", choices=("window", "json", "csv", "terminal"))
+        if destination == "terminal":
+            fmt = _ask("Terminal format", default="json", choices=("json", "csv"))
+            argv += ["--terminal", "--format", fmt]
+        elif destination in {"json", "csv"}:
+            output = _ask("Output path", default=f"outputs\\{source}_anomaly_array.{destination}")
+            argv += ["--format", destination, "--output", output]
     elif command == "plot":
         field = _ask("Which graph", default="density", choices=tuple(PLOT_FIELDS))
         argv = ["plot", field, "--profile", _ask("MESA profile number", default="8")]
@@ -411,7 +415,11 @@ def _run_screen(args) -> None:
 
     if not records:
         raise ValueError("No stars/profiles were available for anomaly screening")
-    _write_records(records, args.output, args.format)
+    if args.output or args.terminal:
+        _write_records(records, args.output, args.format)
+    else:
+        from stellar_analyzer.visualization import show_screen_window
+        show_screen_window(records)
 
 
 def _run_uncertainty(args) -> None:
@@ -621,6 +629,7 @@ def build_parser() -> argparse.ArgumentParser:
     for screen_source in (screen_catalog, screen_mesa, screen_profile, screen_folder):
         screen_source.add_argument("--output", type=Path)
         screen_source.add_argument("--format", choices=("json", "csv"), default="json")
+        screen_source.add_argument("--terminal", action="store_true", help="print the anomaly array instead of opening the desktop table")
         screen_source.add_argument("--guide", action="store_true", help="show a guided command card")
         screen_source.set_defaults(func=_run_screen)
 
