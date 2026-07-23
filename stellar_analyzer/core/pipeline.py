@@ -17,7 +17,7 @@ from stellar_analyzer.core.deviation_drivers import (
     calculate_global_residual,
 )
 from stellar_analyzer.core.global_fit import fit_global_polytrope
-from stellar_analyzer.core.local_fit import calculate_local_n
+from stellar_analyzer.core.local_fit import calculate_local_n_with_diagnostics
 from stellar_analyzer.core.piecewise_fit import fit_piecewise
 from stellar_analyzer.core.data_loader import StellarModel, load_mesa_web_job, load_stellar_model
 from stellar_analyzer.core.preprocess import preprocess_profile
@@ -127,7 +127,7 @@ def _analyze_profile(
     temperature = profile["temperature"]
 
     global_fit = fit_global_polytrope(r, rho, request.teff)
-    local_n = calculate_local_n(pressure, rho, rfrac)
+    local_n, local_n_diagnostics = calculate_local_n_with_diagnostics(pressure, rho, rfrac)
     piecewise = fit_piecewise(
         rfrac,
         rho,
@@ -173,6 +173,7 @@ def _analyze_profile(
         "global_fit": asdict(global_fit),
         "piecewise_fit": asdict(piecewise),
         "n_local": local_n.tolist(),
+        "local_n_diagnostics": local_n_diagnostics.to_dict(),
         "deviation_factors": deltas,
         "anomaly_score": residual.delta_global,
         "status": "Anomaly" if residual.status == "ANOMALOUS" else "Normal",

@@ -91,6 +91,25 @@ def create_figure(result: dict[str, Any], field: str):
     axis.spines[["left", "bottom"]].set_color("#94A3B8")
     axis.text(1, -0.16, f"{len(x):,} valid radial samples", transform=axis.transAxes,
               ha="right", va="top", fontsize=8.5, color="#64748B")
+    if field == "local-n":
+        diagnostics = result.get("local_n_diagnostics", {})
+        if diagnostics.get("warning"):
+            axis.text(
+                0.012,
+                0.965,
+                f"Local n quality: {diagnostics.get('status', 'warning')}",
+                transform=axis.transAxes,
+                ha="left",
+                va="top",
+                fontsize=8.7,
+                color="#92400E",
+                bbox={
+                    "boxstyle": "round,pad=0.38",
+                    "facecolor": "#FEF3C7",
+                    "edgecolor": "#F59E0B",
+                    "linewidth": 0.8,
+                },
+            )
     return figure
 
 

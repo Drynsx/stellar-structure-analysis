@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from stellar_analyzer.cli import build_parser, main
+from stellar_analyzer.core.local_fit import calculate_local_n_with_diagnostics
 from stellar_analyzer.core.uncertainty import bootstrap_global_n, propagate_delta_n_rad_error
 from stellar_analyzer.visualization import create_figure
 from stellar_analyzer.ml.pinn_model import (
@@ -30,6 +31,17 @@ def test_bootstrap_is_deterministic_and_reports_validity():
 def test_radiation_analytical_derivatives_match_finite_difference():
     result = propagate_delta_n_rad_error(0.8, 1.0e7, 100.0, 0.01, 1.0e4, 1.0)
     assert result["derivative_max_relative_error"] < 1e-6
+
+
+def test_local_n_reports_full_fallback_instead_of_silent_flat_curve():
+    radius = np.linspace(0.0, 1.0, 12)
+    rho = np.exp(radius)
+    pressure = rho.copy()
+    n_local, diagnostics = calculate_local_n_with_diagnostics(pressure, rho, radius)
+    assert np.allclose(n_local, 1.5)
+    assert diagnostics.status == "fallback_all_1.5"
+    assert diagnostics.fallback_fraction == 1.0
+    assert diagnostics.warning is not None
 
 
 def test_cli_parses_mesa_analysis_and_training_commands():
@@ -96,6 +108,20 @@ def test_professional_figure_has_clear_labels_and_sample_context():
     assert axis.get_title(loc="left") == "Local polytropic index"
     assert axis.get_xlabel() == "Normalized radius  r / R"
     assert any("valid radial samples" in item.get_text() for item in axis.texts)
+
+
+def test_local_n_figure_warns_when_data_is_fallback_filled():
+    result = {
+        "profile": {"radius_fraction": np.linspace(0.0, 1.0, 12)},
+        "n_local": [1.5] * 12,
+        "local_n_diagnostics": {
+            "status": "fallback_all_1.5",
+            "warning": "fallback",
+        },
+    }
+    figure = create_figure(result, "local-n")
+    axis = figure.axes[0]
+    assert any("Local n quality: fallback_all_1.5" in item.get_text() for item in axis.texts)
 
 
 def test_pinn_forward_and_physics_loss_are_differentiable():
