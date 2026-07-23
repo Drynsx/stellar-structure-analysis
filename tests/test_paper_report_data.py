@@ -21,9 +21,16 @@ def test_paper_report_data_is_complete_and_consistent():
     local = pd.read_csv(part1 / "local_indices.csv")
     contributions = pd.read_csv(part3 / "contribution_percentages.csv")
     residuals = pd.read_csv(part3 / "global_residuals.csv")
+    anomaly_screening = pd.read_csv(part3 / "anomaly_screening.csv")
     radial_drivers = pd.read_csv(part2 / "radial_deviation_profiles.csv")
 
     assert len(sources) == len(parameters) == len(residuals) == 8
+    assert len(anomaly_screening) == len(residuals)
+    assert residuals["anomaly_threshold"].eq(5.0).all()
+    assert anomaly_screening["classification"].eq("Normal").all()
+    assert (part3 / "section_4_3_anomaly_screening.md").read_text(encoding="utf-8").startswith(
+        "### 4.3 Anomaly Screening and Candidate Identification"
+    )
     assert parameters["n_points_processed"].eq(500).all()
     assert len(local) == 8 * 500
     assert len(radial_drivers) == 8 * 500

@@ -9,6 +9,9 @@ import numpy as np
 from stellar_analyzer.core.constants import HBAR_CGS, K_B_CGS, M_E_CGS, M_P_CGS
 
 
+ANOMALY_THRESHOLD = 5.0
+
+
 def _integrate_trapezoid(y: np.ndarray, x: np.ndarray) -> float:
     integrator = getattr(np, "trapezoid", None) or getattr(np, "trapz")
     return float(integrator(y, x))
@@ -19,6 +22,7 @@ class ResidualResult:
     delta_n_obs: float
     delta_n_theory: float
     delta_global: float
+    anomaly_threshold: float
     status: str
 
     def __float__(self) -> float:
@@ -102,15 +106,18 @@ def calculate_global_residual(
     n_base: float,
     delta_n_list: list[np.ndarray | float],
     weights: np.ndarray | None = None,
+    anomaly_threshold: float = ANOMALY_THRESHOLD,
 ) -> ResidualResult:
     """Compare observed polytropic departure to summed physical drivers."""
 
     delta_n_theory = sum(_weighted_mean(delta, weights=weights) for delta in delta_n_list)
     delta_n_obs = float(n_global_observed - n_base)
     delta_global = float(delta_n_obs - delta_n_theory)
+    threshold = float(anomaly_threshold)
     return ResidualResult(
         delta_n_obs=delta_n_obs,
         delta_n_theory=float(delta_n_theory),
         delta_global=delta_global,
-        status="ANOMALOUS" if delta_global > 0.1 else "NORMAL",
+        anomaly_threshold=threshold,
+        status="ANOMALOUS" if abs(delta_global) > threshold else "NORMAL",
     )

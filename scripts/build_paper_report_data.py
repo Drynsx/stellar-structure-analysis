@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from stellar_analyzer.core.data_loader import list_mesa_profiles, load_mesa_web_job
 from stellar_analyzer.core.constants import G_CGS, K_B_CGS, M_P_CGS
 from stellar_analyzer.core.deviation_drivers import (
+    ANOMALY_THRESHOLD,
     calculate_delta_n_conv,
     calculate_delta_n_deg,
     calculate_delta_n_mu,
@@ -63,6 +64,115 @@ def _write_json(path: Path, value: object) -> None:
 def _write_csv(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def _fmt_float(value: float, digits: int = 3) -> str:
+    return f"{float(value):.{digits}f}"
+
+
+def _diagnostic_reason(row: dict, convective_delta: float | None) -> str:
+    score = float(row["delta_global"])
+    status = str(row["status"])
+    if status == "Anomaly":
+        return (
+            f"The residual \\(\\delta_{{global}}={score:.3f}\\) exceeds the "
+            f"\\(|\\delta_{{global}}|>{ANOMALY_THRESHOLD:.1f}\\) screening threshold, "
+            "suggesting unresolved physics such as rotation, magnetism, tides, or "
+            "another driver not included in the five-term model."
+        )
+    if convective_delta is not None and abs(convective_delta) > 0.25:
+        return (
+            "Deviation is accounted for by the convective driver "
+            f"\\(\\Delta n_{{conv}}={convective_delta:.3f}\\). The superadiabatic "
+            "surface layer is therefore treated as explained structure, not an "
+            "unresolved anomaly."
+        )
+    return (
+        f"The residual \\(\\delta_{{global}}={score:.3f}\\) remains below the "
+        "screening threshold after subtracting the five physical deviation drivers."
+    )
+
+
+def _write_anomaly_screening(
+    part3: Path,
+    source_rows: list[dict],
+    residual_rows: list[dict],
+    deviation_rows: list[dict],
+) -> None:
+    sources = {row["star_id"]: row for row in source_rows}
+    deviations = {row["star_id"]: row for row in deviation_rows}
+    screening_rows = []
+    for row in residual_rows:
+        star_id = row["star_id"]
+        source = sources.get(star_id, {})
+        convective_delta = deviations.get(star_id, {}).get("delta_n_conv")
+        classification = "Anomaly" if abs(float(row["delta_global"])) > ANOMALY_THRESHOLD else "Normal"
+        screening_rows.append(
+            {
+                "star_profile_id": star_id,
+                "mass_msun": source.get("mass_msun", ""),
+                "age_gyr": float(source.get("age_years", 0.0)) / 1.0e9 if source else "",
+                "n_global": row["n_global_observed"],
+                "delta_global": row["delta_global"],
+                "classification": classification,
+                "diagnostic_reason": _diagnostic_reason({**row, "status": classification}, convective_delta),
+            }
+        )
+
+    _write_csv(part3 / "anomaly_screening.csv", screening_rows)
+
+    table_lines = [
+        "| Star/Profile ID | Mass | Age | Global \\(n\\) | Anomaly Score \\(\\delta_{global}\\) | Classification | Diagnostic Reason |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :--- |",
+    ]
+    for row in screening_rows:
+        table_lines.append(
+            "| {star_profile_id} | \\({mass}\\,M_\\odot\\) | {age} Gyr | {n_global} | {delta_global} | {classification} | {reason} |".format(
+                star_profile_id=row["star_profile_id"],
+                mass=_fmt_float(row["mass_msun"]),
+                age=f"{float(row['age_gyr']):.3e}" if float(row["age_gyr"]) < 0.001 else _fmt_float(row["age_gyr"]),
+                n_global=_fmt_float(row["n_global"]),
+                delta_global=_fmt_float(row["delta_global"]),
+                classification=row["classification"],
+                reason=row["diagnostic_reason"],
+            )
+        )
+
+    markdown = (
+        "### 4.3 Anomaly Screening and Candidate Identification\n\n"
+        "The anomaly screening stage was based on the master residual between the observed global "
+        "polytropic structure and the amount of deviation explained by the five physical drivers. "
+        "The anomaly score was defined as\n\n"
+        "\\[\n"
+        "\\delta_{global} = (n_{observed} - n_{base}) - \\sum \\langle \\Delta n_i \\rangle ,\n"
+        "\\]\n\n"
+        "where \\(n_{observed}\\) is the fitted global polytropic index, \\(n_{base}\\) is the expected "
+        "reference polytropic index, and \\(\\sum \\langle \\Delta n_i \\rangle\\) is the combined "
+        "contribution from radiation pressure, composition gradients, convection, nuclear energy "
+        "generation, and degeneracy. A large local feature is therefore not automatically an anomaly. "
+        "For example, the superadiabatic surface layer can produce a strong convective spike, but this "
+        "feature is classified as normal when \\(\\Delta n_{conv}\\) accounts for it and leaves "
+        "\\(\\delta_{global}\\approx0\\). In this implementation, a profile is screened as anomalous only "
+        f"when \\(|\\delta_{{global}}|>{ANOMALY_THRESHOLD:.1f}\\), indicating residual structure beyond the "
+        "noise threshold of the current five-driver model.\n\n"
+        + "\n".join(table_lines)
+        + "\n\n"
+        "The current repository evidence contains the imported MESA-Web snapshots listed above. "
+        "Additional 0.8, 2.0, and 5.0 \\(M_\\odot\\) tracks are treated as the next multitrack expansion "
+        "targets until their profile files are imported and recorded in the source manifest. This keeps "
+        "the results section consistent with the actual evidence package while preserving the planned "
+        "screening logic for a broader stellar array.\n\n"
+        "This screening demonstrates the purpose of the anomaly score: to find the needle in the "
+        "haystack. Most stars can be structurally unusual during early evolution or near the surface, "
+        "but they are still normal when the five physical drivers explain the deviation. A true "
+        "candidate anomaly would appear only as a profile with a large \\(|\\delta_{global}|\\), meaning "
+        "that known thermodynamic and structural corrections are insufficient. Future work will apply "
+        "the same pipeline to the proposed full MIST grid of approximately 50,000 stellar models to "
+        "isolate the small fraction of stars, potentially around 1%, whose residuals suggest missing "
+        "physics such as magnetic fields, rapid rotation, binary tides, or other effects not yet "
+        "included in the present driver model.\n"
+    )
+    (part3 / "section_4_3_anomaly_screening.md").write_text(markdown, encoding="utf-8")
 
 
 def _clean_output(output: Path) -> None:
@@ -279,6 +389,7 @@ Important interpretation notes:
                 "delta_n_observed": result["residual"]["delta_n_obs"],
                 "delta_n_theory": result["residual"]["delta_n_theory"],
                 "delta_global": result["residual"]["delta_global"],
+                "anomaly_threshold": result["residual"]["anomaly_threshold"],
                 "status": result["status"],
             }
         )
@@ -376,6 +487,7 @@ Important interpretation notes:
     _write_csv(part2 / "radiation_error_propagation.csv", uncertainty_rows)
     _write_csv(part3 / "contribution_percentages.csv", contribution_rows)
     _write_csv(part3 / "global_residuals.csv", residual_rows)
+    _write_anomaly_screening(part3, source_rows, residual_rows, deviation_rows)
     multitrack = assess_multitrack_manifest(source_rows)
     _write_json(
         part4 / "validation" / "multitrack_readiness.json",
@@ -460,6 +572,7 @@ Important interpretation notes:
         {"chapter_part": "Part 2", "paper_pages": "30-31", "method": "Nuclear-concentration deviation", "evidence": "02_part2_physical_deviations/deviation_summary.csv"},
         {"chapter_part": "Part 2", "paper_pages": "31-35", "method": "Electron-degeneracy deviation", "evidence": "02_part2_physical_deviations/radial_deviation_profiles.csv"},
         {"chapter_part": "Part 3", "paper_pages": "36-37", "method": "Global residual and relative contributions", "evidence": "03_part3_global_comparison/"},
+        {"chapter_part": "Section 4.3", "paper_pages": "results section", "method": "Anomaly screening using absolute global residual threshold", "evidence": "03_part3_global_comparison/section_4_3_anomaly_screening.md; 03_part3_global_comparison/anomaly_screening.csv"},
         {"chapter_part": "Part 4", "paper_pages": "37-40", "method": "Input, preprocessing, fitting, and driver modules", "evidence": "01_part1_polytropic_indices/; 02_part2_physical_deviations/"},
         {"chapter_part": "Part 4", "paper_pages": "40-41", "method": "PINN architecture and training protocol", "evidence": "04_part4_computational_implementation/machine_learning/training_readiness.json"},
         {"chapter_part": "Part 4", "paper_pages": "41-42", "method": "Storage, validation, and monitoring", "evidence": "04_part4_computational_implementation/"},

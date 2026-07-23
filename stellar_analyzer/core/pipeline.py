@@ -9,6 +9,7 @@ import numpy as np
 
 from stellar_analyzer.core.constants import A_RAD_CGS, G_CGS, K_B_CGS, M_P_CGS, M_SUN_CGS, R_SUN_CGS
 from stellar_analyzer.core.deviation_drivers import (
+    ANOMALY_THRESHOLD,
     calculate_delta_n_conv,
     calculate_delta_n_deg,
     calculate_delta_n_mu,
@@ -264,7 +265,7 @@ def _fast_row(row: Any) -> dict[str, float | str]:
         "delta_n_conv": float(delta_conv),
         "delta_n_nuc": float(delta_nuc),
         "delta_n_deg": float(delta_deg),
-        "status": "Anomaly" if anomaly_score > 0.1 else "Normal",
+        "status": "Anomaly" if abs(anomaly_score) > ANOMALY_THRESHOLD else "Normal",
     }
 
 

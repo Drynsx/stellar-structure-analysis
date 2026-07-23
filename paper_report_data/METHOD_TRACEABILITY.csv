@@ -10,6 +10,7 @@ Part 2,29-30,Convective deviation,02_part2_physical_deviations/radial_deviation_
 Part 2,30-31,Nuclear-concentration deviation,02_part2_physical_deviations/deviation_summary.csv
 Part 2,31-35,Electron-degeneracy deviation,02_part2_physical_deviations/radial_deviation_profiles.csv
 Part 3,36-37,Global residual and relative contributions,03_part3_global_comparison/
+Section 4.3,results section,Anomaly screening using absolute global residual threshold,03_part3_global_comparison/section_4_3_anomaly_screening.md; 03_part3_global_comparison/anomaly_screening.csv
 Part 4,37-40,"Input, preprocessing, fitting, and driver modules",01_part1_polytropic_indices/; 02_part2_physical_deviations/
 Part 4,40-41,PINN architecture and training protocol,04_part4_computational_implementation/machine_learning/training_readiness.json
 Part 4,41-42,"Storage, validation, and monitoring",04_part4_computational_implementation/

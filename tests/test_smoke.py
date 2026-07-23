@@ -1,6 +1,6 @@
 from stellar_analyzer import analyze_star, batch_analyze
 from stellar_analyzer.core.data_loader import list_mesa_profiles, load_mesa_web_job
-from stellar_analyzer.core.deviation_drivers import calculate_delta_n_conv
+from stellar_analyzer.core.deviation_drivers import ANOMALY_THRESHOLD, calculate_delta_n_conv, calculate_global_residual
 from stellar_analyzer.core.constants import G_CGS
 from stellar_analyzer.core.global_fit import fit_global_polytrope, solve_lane_emden_rk4
 from stellar_analyzer.core.pipeline import analyze_mesa_job
@@ -60,6 +60,15 @@ def test_convection_correction_is_bounded_for_extreme_surface_gradients():
     )
     assert np.all(np.isfinite(correction))
     assert correction.max() <= 12.0
+
+
+def test_anomaly_screening_uses_absolute_noise_threshold():
+    normal = calculate_global_residual(3.0, 1.5, [0.4], anomaly_threshold=ANOMALY_THRESHOLD)
+    positive = calculate_global_residual(8.0, 1.5, [0.4], anomaly_threshold=ANOMALY_THRESHOLD)
+    negative = calculate_global_residual(1.5, 8.0, [0.0], anomaly_threshold=ANOMALY_THRESHOLD)
+    assert normal.status == "NORMAL"
+    assert positive.status == "ANOMALOUS"
+    assert negative.status == "ANOMALOUS"
 
 
 def test_young_mesa_profile_has_reasonable_residual_and_hydrostatic_check():

@@ -5,5 +5,5 @@
   ],
   "deterministic_steps": "Steps 1-5 and 8-10",
   "stochastic_step": "Step 7 bootstrap; random seed must be recorded when run",
-  "generated_file_count": 27
+  "generated_file_count": 29
 }
