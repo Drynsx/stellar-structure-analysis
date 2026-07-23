@@ -78,6 +78,19 @@ For a catalog, provide CSV columns `mass`, `teff`, `metallicity`, and `age`:
 .\stellar batch stars.csv --output outputs\catalog_results.csv
 ```
 
+To use the system as an anomaly screener, provide a catalog or a set of MESA
+profiles and write the result as an array. Each row includes the fitted global
+index, the five deviation drivers, `delta_global`, the `Normal`/`Anomaly`
+classification, and a diagnostic reason. A star is flagged only when
+`|delta_global| > 5.0`.
+
+```powershell
+.\stellar screen catalog stars.csv --output outputs\anomaly_array.json
+.\stellar screen catalog stars.csv --format csv --output outputs\anomaly_array.csv
+.\stellar screen mesa --output outputs\mesa_anomaly_array.json
+.\stellar screen mesa --profile 2 --profile 8 --format csv --output outputs\selected_profiles.csv
+```
+
 Run a reproducible 1,000-resample uncertainty analysis for a MESA snapshot:
 
 ```powershell

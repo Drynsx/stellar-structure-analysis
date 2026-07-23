@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from rich.panel import Panel
 
+from stellar_analyzer.core.deviation_drivers import ANOMALY_THRESHOLD
 from stellar_analyzer.core.data_loader import list_mesa_profiles
 from stellar_analyzer.core.pipeline import analyze_mesa_job, analyze_profile, analyze_star, batch_analyze
 from stellar_analyzer.ui import (
@@ -92,6 +93,60 @@ def _summary(result: dict) -> dict:
     }
 
 
+def _screening_reason(status: str, anomaly_score: float, convective_delta: float | None = None) -> str:
+    if status == "Anomaly":
+        return (
+            f"|delta_global| = {abs(anomaly_score):.3f} exceeds the {ANOMALY_THRESHOLD:.1f} "
+            "threshold, suggesting unresolved physics beyond the five drivers."
+        )
+    if convective_delta is not None and abs(convective_delta) > 0.25:
+        return (
+            f"Deviation is explained by convection (delta_n_conv = {convective_delta:.3f}); "
+            "surface/convection structure is not an unresolved anomaly."
+        )
+    return (
+        f"|delta_global| = {abs(anomaly_score):.3f} remains below the {ANOMALY_THRESHOLD:.1f} "
+        "threshold after subtracting the five physical drivers."
+    )
+
+
+def _screening_record(star_id: str, result: dict) -> dict:
+    factors = result.get("deviation_factors", {})
+    return {
+        "star_profile_id": star_id,
+        "mass": result.get("input", {}).get("mass"),
+        "age_gyr": result.get("input", {}).get("age"),
+        "teff_k": result.get("input", {}).get("teff"),
+        "n_global": result.get("global_fit", {}).get("n_global"),
+        "delta_n_rad": factors.get("delta_n_rad"),
+        "delta_n_mu": factors.get("delta_n_mu"),
+        "delta_n_conv": factors.get("delta_n_conv"),
+        "delta_n_nuc": factors.get("delta_n_nuc"),
+        "delta_n_deg": factors.get("delta_n_deg"),
+        "delta_global": result.get("anomaly_score"),
+        "threshold": ANOMALY_THRESHOLD,
+        "classification": result.get("status"),
+        "diagnostic_reason": _screening_reason(
+            result.get("status", "Normal"),
+            float(result.get("anomaly_score", 0.0)),
+            factors.get("delta_n_conv"),
+        ),
+    }
+
+
+def _write_records(records: list[dict], output: Path | None, output_format: str) -> None:
+    if output_format == "csv":
+        frame = pd.DataFrame(records)
+        if output:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            frame.to_csv(output, index=False)
+            success(f"Wrote {len(records)} anomaly-screening rows -> {output}")
+        else:
+            print(frame.to_csv(index=False))
+        return
+    _write_json(records, str(output) if output else None)
+
+
 def _run_profiles(args) -> None:
     snapshots = list_mesa_profiles(args.job)
     if args.json:
@@ -141,6 +196,41 @@ def _run_batch(args) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(output, index=False)
     success(f"Analyzed {len(result)} stars -> {output}")
+
+
+def _run_screen(args) -> None:
+    records: list[dict] = []
+    if args.source == "catalog":
+        frame = pd.read_csv(args.input)
+        required = {"mass", "teff", "age"}
+        missing = required.difference(frame.columns)
+        if missing:
+            raise ValueError(f"Catalog is missing columns: {', '.join(sorted(missing))}")
+        for index, row in frame.iterrows():
+            name = str(row.get("name", f"star_{index + 1}"))
+            result = analyze_star({
+                "name": name,
+                "mass": float(row["mass"]),
+                "teff": float(row["teff"]),
+                "metallicity": float(row.get("metallicity", 0.0)),
+                "age": float(row["age"]),
+            })
+            records.append(_screening_record(name, result))
+    elif args.source == "mesa":
+        snapshots = list_mesa_profiles(args.job)
+        selected = [item for item in snapshots if args.profile is None or int(item["profile_number"]) in args.profile]
+        for item in selected:
+            profile_number = int(item["profile_number"])
+            result = analyze_mesa_job(args.job, profile_number)
+            records.append(_screening_record(f"profile_{profile_number}", result))
+    else:
+        for path in args.path:
+            result = analyze_profile(path, n_points=args.points)
+            records.append(_screening_record(path.stem, result))
+
+    if not records:
+        raise ValueError("No stars/profiles were available for anomaly screening")
+    _write_records(records, args.output, args.format)
 
 
 def _run_uncertainty(args) -> None:
@@ -313,6 +403,21 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("input", type=Path)
     batch.add_argument("--output", required=True)
     batch.set_defaults(func=_run_batch)
+
+    screen = commands.add_parser("screen", help="analyze many stars/profiles and output an anomaly array")
+    screen_sources = screen.add_subparsers(dest="source", required=True)
+    screen_catalog = screen_sources.add_parser("catalog", help="screen a CSV catalog with mass, teff, age columns")
+    screen_catalog.add_argument("input", type=Path)
+    screen_mesa = screen_sources.add_parser("mesa", help="screen every profile in a MESA-Web job")
+    screen_mesa.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    screen_mesa.add_argument("--profile", type=int, action="append", help="profile number; repeat to screen selected profiles")
+    screen_profile = screen_sources.add_parser("profile", help="screen one or more MESA/MIST/BaSTI profile files")
+    screen_profile.add_argument("path", type=Path, nargs="+")
+    screen_profile.add_argument("--points", type=int, default=500)
+    for screen_source in (screen_catalog, screen_mesa, screen_profile):
+        screen_source.add_argument("--output", type=Path)
+        screen_source.add_argument("--format", choices=("json", "csv"), default="json")
+        screen_source.set_defaults(func=_run_screen)
 
     uncertainty = commands.add_parser("uncertainty", help="bootstrap uncertainty for a MESA global fit")
     uncertainty.add_argument("--job", type=Path, default=DEFAULT_JOB)

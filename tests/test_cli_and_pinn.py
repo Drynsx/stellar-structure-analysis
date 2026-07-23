@@ -47,12 +47,15 @@ def test_local_n_reports_full_fallback_instead_of_silent_flat_curve():
 def test_cli_parses_mesa_analysis_and_training_commands():
     parser = build_parser()
     analysis = parser.parse_args(["analyze", "mesa", "--profile", "8"])
+    screen = parser.parse_args(["screen", "mesa", "--profile", "2", "--profile", "8", "--format", "csv"])
     training = parser.parse_args(["train-pinn", "--epochs", "2", "--device", "cpu"])
     prepare = parser.parse_args([
         "prepare-pinn", "--job", "data/raw/MESA-Web_0.8M", "--job", "data/raw/MESA-Web_1.0M",
         "--min-samples", "150",
     ])
     assert analysis.profile == 8
+    assert screen.profile == [2, 8]
+    assert screen.format == "csv"
     assert training.epochs == 2
     assert len(prepare.job) == 2
     assert prepare.min_samples == 150
@@ -91,6 +94,32 @@ def test_cli_saves_png_plot(tmp_path):
     output = tmp_path / "density.png"
     assert main(["plot", "density", "--profile", "8", "--save", str(output), "--save-only"]) == 0
     assert output.read_bytes().startswith(b"\x89PNG")
+
+
+def test_cli_screens_catalog_as_anomaly_array(tmp_path):
+    catalog = tmp_path / "stars.csv"
+    output = tmp_path / "anomalies.json"
+    catalog.write_text(
+        "name,mass,teff,metallicity,age\n"
+        "solar_like,1.0,5778,0.0,4.6\n"
+        "hot_star,5.0,15000,0.0,0.01\n",
+        encoding="utf-8",
+    )
+    assert main(["screen", "catalog", str(catalog), "--output", str(output)]) == 0
+    records = json.loads(output.read_text(encoding="utf-8"))
+    assert [record["star_profile_id"] for record in records] == ["solar_like", "hot_star"]
+    assert {"n_global", "delta_global", "classification", "diagnostic_reason"}.issubset(records[0])
+
+
+def test_cli_screens_mesa_profiles_as_csv_array(tmp_path):
+    output = tmp_path / "mesa_anomalies.csv"
+    assert main([
+        "screen", "mesa", "--profile", "2", "--profile", "8",
+        "--format", "csv", "--output", str(output),
+    ]) == 0
+    frame = __import__("pandas").read_csv(output)
+    assert frame["star_profile_id"].tolist() == ["profile_2", "profile_8"]
+    assert frame["classification"].eq("Normal").all()
 
 
 def test_cli_opens_desktop_graph_window_by_default():
