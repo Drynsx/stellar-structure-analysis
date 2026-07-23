@@ -1,8 +1,45 @@
-# Stellar Structure Analyzer CLI
+# Stellar Structure Analyzer
 
-Command-line tools for global, local, and piecewise polytropic analysis,
-physical-deviation decomposition, legacy MESA-Web profiles, and reproducible
-physics-informed neural network (PINN) training.
+A computational astrophysics toolkit for stellar-structure analysis, anomaly
+screening, and physics-informed machine-learning preparation using polytropic
+indices.
+
+The system analyzes stellar profiles from MESA-Web, uploaded MIST/MESA-style
+radial profile files, and simple CSV catalogs. It fits global and local
+polytropic structure, evaluates five physical deviation drivers, and screens
+stars for unresolved anomalies using the master residual
+
+\[
+\delta_{global} = (n_{observed} - n_{base}) - \sum \langle \Delta n_i \rangle .
+\]
+
+A star is classified as anomalous only when
+
+```text
+|delta_global| > 5.0
+```
+
+Large convection or surface spikes are not automatically anomalies if the
+physical drivers explain them.
+
+## Current capabilities
+
+- Global polytropic fitting with physical \(n\), \(\rho_c\), \(\alpha\), and \(K\).
+- Local polytropic-index calculation with fallback diagnostics.
+- Equality-constrained piecewise polytropic fitting.
+- Five deviation drivers:
+  - radiation pressure
+  - composition gradient
+  - convection
+  - nuclear concentration
+  - degeneracy
+- Batch anomaly screening with JSON/CSV output.
+- Desktop anomaly-array table using Tkinter.
+- Desktop radial-profile graph window for density, pressure, temperature, and local \(n\).
+- Question-style CLI guides for common workflows.
+- Reproducible bootstrap uncertainty summaries.
+- PINN dataset preparation and training scaffolding.
+- Chapter 3 evidence package under `paper_report_data/`.
 
 ## Install
 
@@ -11,92 +48,19 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-After installation, run commands through the repository launcher:
+Run commands through the repository launcher:
 
 ```powershell
 .\stellar --help
 ```
 
-Prefer to be walked through it? The interactive guide asks what you want to do,
-offers sensible defaults, shows the command it builds, and runs it for you:
+For a guided workflow:
 
 ```powershell
 .\stellar guide
 ```
 
-At each prompt, press Enter to accept the value in square brackets. Regular
-commands also include clearer value names and units in their `--help` output;
-for example, run `.\stellar analyze star --help`.
-
-## Analyze
-
-List the bundled MESA snapshots:
-
-```powershell
-.\stellar profiles
-```
-
-Analyze the latest snapshot, with a concise JSON result:
-
-```powershell
-.\stellar analyze mesa
-```
-
-The default view is a readable terminal report. Add `--json` for machine-readable
-output, or `--output` to write JSON to a file.
-
-Open a separate desktop graph window with professional tabs for density,
-pressure, temperature, and local polytropic index. The window includes standard
-zoom, pan, reset, and image-export controls:
-
-```powershell
-.\stellar plot density --profile 8
-.\stellar plot temperature --profile 8 --save outputs\temperature.png
-```
-
-On Windows, double-click `stellar-graphs.pyw` to open the complete graph
-workspace directly without a terminal window.
-
-For a text-only session, add `--terminal` to use the compact ASCII graph.
-
-Analyze a particular snapshot and save full radial arrays:
-
-```powershell
-.\stellar analyze mesa --profile 8 --full --output outputs\profile8.json
-```
-
-Analyze stellar parameters or an external profile:
-
-```powershell
-.\stellar analyze star --name Sun --mass 1 --teff 5778 --age 4.6
-.\stellar analyze profile path\to\profile.data
-```
-
-For a catalog, provide CSV columns `mass`, `teff`, `metallicity`, and `age`:
-
-```powershell
-.\stellar batch stars.csv --output outputs\catalog_results.csv
-```
-
-To use the system as an anomaly screener, provide a catalog or a set of MESA
-profiles. Without `--output`, the result opens as a desktop anomaly-array table
-using the same visual style as `.\stellar plot`. Each row includes the fitted global
-index, the five deviation drivers, `delta_global`, the `Normal`/`Anomaly`
-classification, and a diagnostic reason. A star is flagged only when
-`|delta_global| > 5.0`.
-
-```powershell
-.\stellar screen folder data\uploads\mist
-.\stellar screen mesa
-.\stellar screen catalog stars.csv --output outputs\anomaly_array.json
-.\stellar screen catalog stars.csv --format csv --output outputs\anomaly_array.csv
-.\stellar screen mesa --output outputs\mesa_anomaly_array.json
-.\stellar screen mesa --profile 2 --profile 8 --format csv --output outputs\selected_profiles.csv
-.\stellar screen folder data\uploads\mist --format csv --output outputs\mist_anomaly_array.csv
-```
-
-Every command also has a question-style guide using the same terminal UI. It
-asks what to type next, builds the command, shows it, and runs it:
+For a command-specific question guide:
 
 ```powershell
 .\stellar screen --guide
@@ -104,38 +68,159 @@ asks what to type next, builds the command, shows it, and runs it:
 .\stellar batch --guide
 ```
 
-For a quick non-interactive reference card, use:
+For quick reference cards:
 
 ```powershell
+.\stellar help
 .\stellar help screen
 .\stellar help all
 ```
 
-Run a reproducible 1,000-resample uncertainty analysis for a MESA snapshot:
+## Analyze stellar profiles
+
+List bundled MESA-Web snapshots:
 
 ```powershell
-.\stellar uncertainty --profile 8 --bootstrap 1000 --seed 42 --output outputs\profile8-uncertainty.json
+.\stellar profiles
 ```
 
-The summary records the successful-fit rate and 95% confidence interval. Add
-`--include-samples` only when individual bootstrap values are required.
+Analyze a MESA-Web snapshot:
+
+```powershell
+.\stellar analyze mesa --profile 8
+```
+
+Save machine-readable JSON:
+
+```powershell
+.\stellar analyze mesa --profile 8 --output outputs\profile8.json
+```
+
+Analyze a manually uploaded radial profile file:
+
+```powershell
+.\stellar analyze profile data\uploads\mist\profile1.data
+```
+
+Analyze stellar parameters directly:
+
+```powershell
+.\stellar analyze star --name Sun --mass 1 --teff 5778 --age 4.6
+```
+
+## Screen for anomaly candidates
+
+The main user-facing workflow is:
+
+```text
+upload star/profile data -> analyze all entries -> output anomaly array
+```
+
+Users can upload MIST/MESA-style profile files by placing them in a folder such
+as:
+
+```text
+data\uploads\mist\
+```
+
+Then run:
+
+```powershell
+.\stellar screen folder data\uploads\mist
+```
+
+Without `--output`, this opens a Tkinter desktop anomaly-array table. The table
+shows the star/profile ID, mass, age, effective temperature, global \(n\),
+\(\delta_{global}\), classification, and diagnostic reason. Rows classified as
+anomalies are highlighted.
+
+To save the anomaly array instead:
+
+```powershell
+.\stellar screen folder data\uploads\mist --output outputs\mist_anomaly_array.json
+.\stellar screen folder data\uploads\mist --format csv --output outputs\mist_anomaly_array.csv
+```
+
+Screen bundled MESA-Web snapshots:
+
+```powershell
+.\stellar screen mesa
+.\stellar screen mesa --profile 2 --profile 8
+```
+
+Screen a CSV catalog with columns `name`, `mass`, `teff`, `metallicity`, and
+`age`:
+
+```powershell
+.\stellar screen catalog stars.csv --output outputs\anomaly_array.json
+```
+
+## Visualize radial structure
+
+Open the desktop graph window:
+
+```powershell
+.\stellar plot density --profile 8
+.\stellar plot local-n --profile 8
+```
+
+Save a graph as PNG:
+
+```powershell
+.\stellar plot temperature --profile 8 --save outputs\temperature.png
+```
+
+Use a terminal-only graph:
+
+```powershell
+.\stellar plot density --profile 8 --terminal
+```
+
+On Windows, double-click:
+
+```text
+stellar-graphs.pyw
+```
+
+to open the graph workspace without a terminal.
+
+## Batch analysis
+
+For a simple catalog, provide CSV columns `mass`, `teff`, `metallicity`, and
+`age`:
+
+```powershell
+.\stellar batch stars.csv --output outputs\catalog_results.csv
+```
+
+Use `screen catalog` when the desired output is an anomaly-candidate array.
+
+## Uncertainty analysis
+
+Run a reproducible 1,000-resample bootstrap analysis:
+
+```powershell
+.\stellar uncertainty --profile 8 --bootstrap 1000 --seed 42 --output outputs\profile8_uncertainty.json
+```
+
+The result records the success count, success rate, mean, standard deviation,
+95% confidence interval, and seed.
 
 ## Prepare and train the PINN
 
-The bundled dataset is generated from all eight snapshots with no pickled
-objects. Each sample contains 500 radial positions, 15 input features, three
-profile targets, five physical-deviation targets, and a fitted polytropic index.
-Wide-range deviation targets use a reversible signed-log transform during
-optimization and are converted back to physical values for prediction output.
+The bundled dataset is generated from one solar-mass MESA-Web track with eight
+snapshots. It is suitable for validating the pipeline, not for claiming a
+generalizable production PINN.
+
+Prepare the bundled dataset:
 
 ```powershell
 .\stellar prepare-pinn
 .\stellar dataset-info
-.\stellar train-pinn --config configs\pinn_training.json
 ```
 
-For the 150-profile training requirement, use at least eight MESA-Web stellar
-tracks and fail fast if fewer than 150 profiles are present:
+For the thesis training target, use at least eight MESA-Web tracks and at least
+150 total profiles:
 
 ```powershell
 .\stellar prepare-pinn `
@@ -150,53 +235,82 @@ tracks and fail fast if fewer than 150 profiles are present:
   --min-samples 150
 ```
 
-Training uses deterministic profile-level train/validation/test splits,
-supervised profile and deviation losses, a Lane-Emden residual computed from
-the model prediction, early stopping, and a metadata-rich checkpoint. A quick
-pipeline check can use `--epochs 2 --output models\smoke_checkpoint.pt`.
-
-After training:
+Train and validate:
 
 ```powershell
-.\stellar predict --mass 1 --teff 5778 --age 4.6 --output outputs\sun_pinn.json
+.\stellar train-pinn --config configs\pinn_training.json
 .\stellar validate-pinn --profile 8
 ```
 
-For a large radial-profile HDF5 grid, preparation is streamed into a chunked
-dataset and training reads it lazily:
+Prediction example:
+
+```powershell
+.\stellar predict --mass 1 --teff 5778 --age 4.6 --output outputs\sun_pinn.json
+```
+
+## MIST and MESA data note
+
+This program requires internal radial structure profiles containing at least
+radius, density, and pressure. Public MIST packaged grids are usually
+evolutionary-track tables, not full internal radial profiles. If using MIST,
+provide exported structure/profile files or a radial-profile HDF5 grid.
+
+For a large HDF5 radial-profile grid:
 
 ```powershell
 .\stellar prepare-pinn --grid data\raw\mist_grid\profiles.h5
 .\stellar train-pinn --data data\processed\pinn_grid.h5 --config configs\pinn_training.json
 ```
 
-The [official MIST packaged grids](https://mist.science/model_grids.html) are
-evolutionary-track tables, not internal radial profiles. This model requires a
-structure grid containing radius, density, and pressure for every sample; see
-`data/raw/mist_grid/README.md`.
+See:
 
-The bundled data contains one solar-mass evolutionary track. It is enough to
-validate the training machinery, but not to claim a generalizable production
-PINN. Add diverse MESA tracks across mass, metallicity, and evolutionary stage,
-then rebuild the dataset before production training.
+```text
+data\raw\mist_grid\README.md
+```
 
-## Report evidence and tests
+## Report evidence
+
+Regenerate the Chapter 3 evidence package:
 
 ```powershell
 .venv\Scripts\python.exe scripts\build_paper_report_data.py
-.venv\Scripts\python.exe -m pytest -q
 ```
 
-Additional genuine MESA-Web track directories can be included without mixing
-their validation folds:
+Include additional MESA-Web tracks:
 
 ```powershell
 .venv\Scripts\python.exe scripts\build_paper_report_data.py `
   --extra-job data\raw\MESA-Web_0.8M `
-  --extra-job data\raw\MESA-Web_2M `
-  --extra-job data\raw\MESA-Web_5M
+  --extra-job data\raw\MESA-Web_2.0M `
+  --extra-job data\raw\MESA-Web_5.0M
 ```
 
-`paper_report_data/` maps the reproducible evidence to Chapter 3, PDF pages
-18-42. `METHOD_TRACEABILITY.csv` locates each method and `MANIFEST.csv` records
-file hashes.
+Important files:
+
+- `paper_report_data/METHOD_TRACEABILITY.csv`
+- `paper_report_data/MANIFEST.csv`
+- `paper_report_data/03_part3_global_comparison/section_4_3_anomaly_screening.md`
+- `paper_report_data/03_part3_global_comparison/anomaly_screening.csv`
+
+## Test
+
+```powershell
+.venv\Scripts\python.exe -m pytest -q
+```
+
+On some Windows systems, pytest temporary-directory cleanup can fail because of
+locked folders. In that case, run with a fresh workspace-owned base temp:
+
+```powershell
+.venv\Scripts\python.exe -m pytest -q --basetemp .pytest-tmp-run
+```
+
+## Current evidence status
+
+- Current bundled MESA evidence: one 1.0 \(M_\odot\) MESA-Web track with eight
+  snapshots.
+- Current anomaly screening output: all bundled snapshots are normal under the
+  \(|\delta_{global}| > 5.0\) criterion.
+- PINN architecture and dataset tooling are implemented.
+- A scientifically generalizable PINN still requires the planned multitrack
+  dataset, ideally at least eight stars/tracks and at least 150 profiles.
