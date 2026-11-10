@@ -11,5 +11,5 @@
     "Missing target mass coverage: 0.8, 2.0, 5.0"
   ],
   "test_command": ".venv\\Scripts\\python.exe -m pytest -q",
-  "python_version": "3.12.13"
+  "python_version": "3.13.18"
 }

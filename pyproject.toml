@@ -19,6 +19,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+fits = ["astropy>=6.0"]
+db = ["psycopg2-binary>=2.9"]
+full = ["astropy>=6.0", "psycopg2-binary>=2.9"]
 
 [project.scripts]
 stellar-analyzer = "stellar_analyzer.cli:main"

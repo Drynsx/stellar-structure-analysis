@@ -1,0 +1,24 @@
+# Kepler Asteroseismic LEGACY sample: observed global asteroseismic
+# parameters and inferred fundamental stellar properties.
+# Sources:
+#   - Lund, M. N., Silva Aguirre, V., Davies, G. R., et al. 2017, ApJ, 835, 172,
+#     "Standing on the Shoulders of Dwarfs: the Kepler Asteroseismic LEGACY
+#     Sample I. Oscillation Mode Parameters" (Teff, [Fe/H], numax, vsini).
+#   - Silva Aguirre, V., Lund, M. N., Antia, H. M., et al. 2017, ApJ, 835, 173,
+#     "Standing on the Shoulders of Dwarfs: the Kepler Asteroseismic LEGACY
+#     Sample II. Radii, Masses, and Ages" (mass, radius, age, Xc; reported as
+#     the combined range across the seven modeling pipelines used).
+#   - Values below reproduced via Table 6 of Bellinger, E. P. et al. 2020, A&A
+#     633, A153 (https://www.aanda.org/articles/aa/full_html/2020/01/aa36666-19/T6.html),
+#     which republishes the Lund/Silva Aguirre parameters for these targets.
+# mass_msun/radius_rsun/age_gyr/xc are reported as midpoints of the published
+# [lower; upper] range across modeling pipelines; the _lo/_hi columns keep
+# the original bounds for honest uncertainty propagation.
+# Columns: kic, teff_k, feh_dex, numax_uhz, vsini_km_s, mass_msun, mass_msun_lo, mass_msun_hi,
+#          radius_rsun, radius_rsun_lo, radius_rsun_hi, age_gyr, age_gyr_lo, age_gyr_hi,
+#          xc, xc_lo, xc_hi
+kic,teff_k,feh_dex,numax_uhz,vsini_km_s,mass_msun,mass_msun_lo,mass_msun_hi,radius_rsun,radius_rsun_lo,radius_rsun_hi,age_gyr,age_gyr_lo,age_gyr_hi,xc,xc_lo,xc_hi
+2837475,6614,0.01,1558,23.30,1.42,1.38,1.46,1.63,1.61,1.65,1.59,1.42,1.76,0.40,0.35,0.45
+9206432,6538,0.16,1866,6.80,1.49,1.38,1.60,1.52,1.50,1.54,1.58,1.20,1.96,0.435,0.37,0.50
+11081729,6548,0.11,1969,24.10,1.38,1.26,1.50,1.455,1.42,1.49,2.005,1.84,2.17,0.44,0.35,0.53
+11253226,6642,-0.08,1591,14.40,1.39,1.32,1.46,1.615,1.58,1.65,1.74,1.60,1.88,0.365,0.34,0.39

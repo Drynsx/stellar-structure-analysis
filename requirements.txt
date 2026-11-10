@@ -6,3 +6,5 @@ torch>=2.0
 rich>=13.7
 matplotlib>=3.8
 pytest>=8.0
+astropy>=6.0
+psycopg2-binary>=2.9

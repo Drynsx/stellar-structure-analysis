@@ -6,5 +6,6 @@
   "patience": 30,
   "seed": 42,
   "device": "auto",
-  "output_path": "models/pinn_checkpoint.pt"
+  "output_path": "models/pinn_checkpoint.pt",
+  "num_heads": 1
 }

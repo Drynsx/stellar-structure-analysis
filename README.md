@@ -38,7 +38,17 @@ physical drivers explain them.
 - Desktop radial-profile graph window for density, pressure, temperature, and local \(n\).
 - Question-style CLI guides for common workflows.
 - Reproducible bootstrap uncertainty summaries.
-- PINN dataset preparation and training scaffolding.
+- PINN dataset preparation and training scaffolding, with optional
+  multi-head additive attention (`num_heads` in `configs/pinn_training.json`).
+- FITS (Kepler asteroseismic) and VOTable (Gaia benchmark) observational
+  catalog readers (requires the optional `fits` extra: `pip install -e ".[fits]"`).
+- External validation against a Standard Solar Model profile and the
+  Kepler Asteroseismic LEGACY sample (`stellar validate-external`; see
+  "External validation" below).
+- PostgreSQL storage module (schema, indexing, gzip-compressed/chunked
+  binary storage) for the three Chapter 3 data levels, alongside the
+  existing local HDF5/CSV outputs (requires the optional `db` extra:
+  `pip install -e ".[db]"`; see "Database storage" below).
 - Chapter 3 evidence package under `paper_report_data/`.
 
 ## Install and run
@@ -305,6 +315,62 @@ See:
 ```text
 data\raw\mist_grid\README.md
 ```
+
+## External validation
+
+Chapter 3 calls for checking agreement (via Δn, RMS, and PSI) between this
+project's computed results and (a) a Standard Solar Model and (b) stars with
+asteroseismic data. Real, cited reference data for both ships under
+`data/reference/`:
+
+- `model_s_profile.csv`: a sampled radial profile of Model S
+  (Christensen-Dalsgaard et al. 1996), used for a full profile-level
+  comparison (Δn from the project's own global fit, density-profile RMS,
+  and PSI).
+- `kepler_legacy_sample.csv`: published mass/radius/age for a handful of
+  Kepler Asteroseismic LEGACY sample stars (Lund et al. 2017; Silva
+  Aguirre et al. 2017), used for a fundamental-parameter consistency
+  check, since asteroseismic catalogs give global parameters rather than
+  internal radial profiles.
+
+```powershell
+.\stellar validate-external mesa --profile 8
+.\stellar validate-external profile data\uploads\mist\profile1.data --kic 2837475
+```
+
+See `stellar_analyzer/core/external_validation.py` for the exact metric
+definitions (PSI in particular has no single standard formula in the
+literature; the docstring there states the operational definition used).
+To validate against the full-resolution Model S grid instead of the
+bundled sample, download `cptrho.l5bi.d.15c` from
+<https://users-phys.au.dk/~jcd/solar_models/> and pass its path to
+`external_validation.load_ssm_profile`.
+
+## Database storage
+
+The three data levels from Chapter 3 step 1 (global parameters, radial
+profiles, derived quantities), plus gzip(6)-compressed, chunked binary
+storage of large arrays, can be persisted to PostgreSQL alongside the
+existing local HDF5/CSV outputs:
+
+```powershell
+$env:STELLAR_ANALYZER_DATABASE_URL = "postgresql://user:password@localhost:5432/stellar_analyzer"
+```
+
+```python
+from stellar_analyzer.db import connection, repository, schema
+
+conn = connection.connect()
+schema.create_schema(conn)
+star_id = repository.insert_star(conn, {"name": "Sun", "source": "mesa", "mass_msun": 1.0, "teff_k": 5778.0, "metallicity_feh": 0.0, "age_gyr": 4.6})
+repository.insert_radial_profile(conn, star_id, {"r_over_r": r, "rho_g_cm3": rho, "pressure_dyn_cm2": pressure})
+repository.insert_binary_array(conn, star_id, "density_profile", rho)
+```
+
+The compression/chunking helpers in `stellar_analyzer/db/binary_store.py`
+are pure NumPy and unit-tested without a database. The schema/repository
+tests in `tests/test_db_storage.py` skip cleanly when no PostgreSQL
+instance is reachable at `STELLAR_ANALYZER_DATABASE_URL`.
 
 ## Report evidence
 

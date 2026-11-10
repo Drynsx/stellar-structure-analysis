@@ -69,6 +69,14 @@ COMMAND_GUIDES = {
         "rows": [("--checkpoint", "trained PINN weights"), ("--profile", "MESA profile to compare against")],
         "examples": [".\\stellar validate-pinn --profile 8"],
     },
+    "validate-external": {
+        "rows": [
+            ("--job/path", "MESA-Web job or profile file to validate"),
+            ("--kic", "match a specific Kepler LEGACY star by KIC (default: nearest Teff)"),
+            ("--threshold", "fractional consistency threshold (default: 0.25)"),
+        ],
+        "examples": [".\\stellar validate-external mesa --profile 8", ".\\stellar validate-external profile data\\uploads\\mist\\profile1.data"],
+    },
 }
 
 
@@ -536,6 +544,33 @@ def _run_predict(args) -> None:
     _write_json(value, args.output)
 
 
+def _sanitize_for_json(value):
+    """Replace NaN with None recursively so json.dumps(allow_nan=False) succeeds."""
+
+    if isinstance(value, dict):
+        return {key: _sanitize_for_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    return value
+
+
+def _run_validate_external(args) -> None:
+    if _maybe_show_guide(args, "validate-external"):
+        return
+    from stellar_analyzer.core.external_validation import validate_pipeline_result
+    from stellar_analyzer.core.pipeline import analyze_mesa_job, analyze_profile
+
+    if args.source == "mesa":
+        result = analyze_mesa_job(str(args.job), args.profile)
+    else:
+        result = analyze_profile(str(args.path), n_points=args.points)
+
+    report = validate_pipeline_result(result, kic=args.kic, consistency_threshold=args.threshold)
+    _write_json(_sanitize_for_json(report), args.output)
+
+
 def _run_validate(args) -> None:
     if _maybe_show_guide(args, "validate-pinn"):
         return
@@ -690,6 +725,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--patience", type=int)
     train.add_argument("--seed", type=int)
     train.add_argument("--device", choices=["auto", "cpu", "cuda"])
+    train.add_argument("--num-heads", type=int, dest="num_heads", help="attention heads in RadialAttention")
     train.add_argument("--output", dest="output_path")
     train.add_argument("--guide", action="store_true", help="show a guided command card")
     train.set_defaults(func=_run_train)
@@ -704,6 +740,27 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--output")
     predict.add_argument("--guide", action="store_true", help="show a guided command card")
     predict.set_defaults(func=_run_predict)
+
+    validate_external = commands.add_parser(
+        "validate-external", help="check Delta n/RMS/PSI against the Standard Solar Model and Kepler LEGACY"
+    )
+    validate_external_sources = validate_external.add_subparsers(dest="source", required=True)
+    validate_external_mesa = validate_external_sources.add_parser("mesa", help="validate a MESA-Web snapshot")
+    validate_external_mesa.add_argument("--job", type=Path, default=DEFAULT_JOB)
+    validate_external_mesa.add_argument("--profile", type=int)
+    validate_external_profile = validate_external_sources.add_parser(
+        "profile", help="validate a MESA/MIST/BaSTI profile"
+    )
+    validate_external_profile.add_argument("path", type=Path)
+    validate_external_profile.add_argument("--points", type=int, default=500)
+    for validate_external_source in (validate_external_mesa, validate_external_profile):
+        validate_external_source.add_argument("--kic", type=int, help="match a specific Kepler LEGACY star by KIC")
+        validate_external_source.add_argument(
+            "--threshold", type=float, default=0.25, help="fractional consistency threshold"
+        )
+        validate_external_source.add_argument("--output")
+        validate_external_source.add_argument("--guide", action="store_true", help="show a guided command card")
+        validate_external_source.set_defaults(func=_run_validate_external)
 
     validate = commands.add_parser("validate-pinn", help="compare a PINN checkpoint with analytical fits")
     validate.add_argument("--checkpoint", type=Path, default=ROOT / "models" / "pinn_checkpoint.pt")

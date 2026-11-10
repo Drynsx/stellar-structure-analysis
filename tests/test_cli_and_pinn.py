@@ -12,7 +12,8 @@ from stellar_analyzer.core.local_fit import calculate_local_n_with_diagnostics
 from stellar_analyzer.core.uncertainty import bootstrap_global_n, propagate_delta_n_rad_error
 from stellar_analyzer.visualization import create_figure
 from stellar_analyzer.ml.pinn_model import (
-    Hdf5StellarDataset, StellarPINN, build_differentiable_features, physics_residual_loss,
+    Hdf5StellarDataset, RadialAttention, StellarPINN, TrainingConfig,
+    build_differentiable_features, physics_residual_loss,
 )
 from stellar_analyzer.ml.training_data import inspect_dataset, prepare_hdf5_grid_dataset, prepare_mesa_datasets
 
@@ -226,6 +227,84 @@ def test_pinn_forward_and_physics_loss_are_differentiable():
     assert prediction["delta_n"].shape == (2, 5)
     assert prediction["profiles"].shape == (2, 20, 3)
     assert torch.isfinite(loss)
+
+
+def test_radial_attention_single_head_matches_manual_additive_computation():
+    """num_heads=1 must be mathematically identical to the original single-head module."""
+
+    torch.manual_seed(0)
+    attention = RadialAttention(width=16, num_heads=1)
+    x = torch.rand(3, 10, 16)
+
+    weights = torch.softmax(attention.scores[0](x), dim=1)
+    expected_context = torch.sum(weights * attention.values[0](x), dim=1, keepdim=True)
+    expected = x + expected_context
+
+    actual = attention(x)
+    assert torch.allclose(actual, expected)
+
+
+def test_radial_attention_multi_head_sums_independent_head_contexts():
+    torch.manual_seed(1)
+    num_heads = 4
+    attention = RadialAttention(width=16, num_heads=num_heads)
+    x = torch.rand(2, 12, 16)
+
+    expected_context = 0.0
+    for head in range(num_heads):
+        weights = torch.softmax(attention.scores[head](x), dim=1)
+        expected_context = expected_context + torch.sum(weights * attention.values[head](x), dim=1, keepdim=True)
+
+    actual = attention(x)
+    assert torch.allclose(actual, x + expected_context)
+    assert actual.shape == x.shape
+
+
+def test_radial_attention_rejects_zero_heads():
+    try:
+        RadialAttention(width=8, num_heads=0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("RadialAttention should reject num_heads < 1")
+
+
+def test_stellar_pinn_num_heads_threaded_through_architecture_and_output_shape():
+    model_single = StellarPINN(width=16, depth=2, num_heads=1)
+    model_multi = StellarPINN(width=16, depth=2, num_heads=4)
+    assert model_single.architecture["num_heads"] == 1
+    assert model_multi.architecture["num_heads"] == 4
+    assert len(model_multi.attention.scores) == 4
+
+    stored = torch.rand(2, 20, 15)
+    stored[..., 4] = torch.linspace(0.0, 1.0, 20)
+    features, _ = build_differentiable_features(stored)
+
+    for model in (model_single, model_multi):
+        prediction = model(features)
+        assert prediction["delta_n"].shape == (2, 5)
+        assert prediction["profiles"].shape == (2, 20, 3)
+
+
+def test_training_config_num_heads_defaults_to_one_and_is_overridable():
+    assert TrainingConfig().num_heads == 1
+    assert TrainingConfig(num_heads=4).num_heads == 4
+
+
+def test_pinn_checkpoint_round_trips_num_heads(tmp_path):
+    """A checkpoint trained with num_heads>1 must reload with the same attention shape."""
+
+    from stellar_analyzer.ml.pinn_model import load_pinn_weights
+
+    model = StellarPINN(width=8, depth=1, num_heads=3)
+    checkpoint_path = tmp_path / "checkpoint.pt"
+    torch.save(
+        {"format_version": 1, "state_dict": model.state_dict(), "architecture": model.architecture},
+        checkpoint_path,
+    )
+    reloaded = load_pinn_weights(checkpoint_path)
+    assert len(reloaded.attention.scores) == 3
+    assert reloaded.architecture["num_heads"] == 3
 
 
 def test_prepared_dataset_has_expected_schema():

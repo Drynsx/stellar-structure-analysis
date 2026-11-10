@@ -307,6 +307,95 @@ def list_mesa_profiles(job_path: str | Path) -> list[dict[str, Any]]:
     return sorted(snapshots, key=lambda item: (item["model_number"], item["profile_number"]))
 
 
+OBSERVATIONAL_COLUMNS = {
+    "star_id": ("kic", "kepid", "source_id", "gaia_id", "star_id", "name", "id"),
+    "mass_msun": ("mass", "mass_msun", "m", "m_mass"),
+    "radius_rsun": ("radius", "radius_rsun", "r", "r_rad"),
+    "teff": ("teff", "t_eff", "temperature"),
+    "metallicity": ("feh", "fe_h", "metallicity", "z"),
+    "age_gyr": ("age", "age_gyr"),
+    "numax": ("numax", "nu_max"),
+    "delta_nu": ("dnu", "delta_nu", "deltanu"),
+    "logg": ("logg", "log_g"),
+}
+
+
+def _canonicalize_table_columns(table) -> pd.DataFrame:
+    """Rename a table's columns to canonical observational names where known."""
+
+    frame = table.to_pandas() if hasattr(table, "to_pandas") else pd.DataFrame(table)
+    normalized = {_normalize_name(col): col for col in frame.columns}
+    renamed = {}
+    for canonical, aliases in OBSERVATIONAL_COLUMNS.items():
+        for alias in aliases:
+            key = _normalize_name(alias)
+            if key in normalized and canonical not in renamed.values():
+                renamed[normalized[key]] = canonical
+                break
+    return frame.rename(columns=renamed)
+
+
+def read_fits_asteroseismic_catalog(path: str | Path, hdu: int | str = 1) -> pd.DataFrame:
+    """Read a Kepler asteroseismic catalog (binary table FITS) into a DataFrame.
+
+    Per Chapter 3 step 2 (observational data), Kepler asteroseismic data is
+    distributed as FITS binary tables, typically carrying ``numax``,
+    ``Dnu``, and fundamental parameters (mass, radius, Teff) for each star.
+    Columns are renamed to canonical names (see ``OBSERVATIONAL_COLUMNS``)
+    where recognized; unrecognized columns are kept under their original
+    names so no information is silently dropped.
+    """
+
+    try:
+        from astropy.io import fits
+        from astropy.table import Table
+    except ImportError as exc:  # pragma: no cover - dependency is optional.
+        raise ImportError(
+            "astropy is required to read FITS asteroseismic catalogs; install it with "
+            "'pip install astropy' (or the project's 'fits' extra)"
+        ) from exc
+
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"FITS asteroseismic catalog not found: {path}")
+
+    with fits.open(path) as handle:
+        table = Table(handle[hdu].data)
+    frame = _canonicalize_table_columns(table)
+    if frame.empty:
+        raise ValueError(f"No rows found in FITS asteroseismic catalog: {path}")
+    return frame
+
+
+def read_votable_benchmark_catalog(path: str | Path) -> pd.DataFrame:
+    """Read a Gaia benchmark-star catalog (VOTable format) into a DataFrame.
+
+    Per Chapter 3 step 2, Gaia benchmark stars are distributed as VOTable
+    files carrying fundamental parameters (Teff, [Fe/H], logg, mass,
+    radius) derived independently of asteroseismology, used for external
+    validation of the fitted polytropic indices.
+    """
+
+    try:
+        from astropy.io.votable import parse as parse_votable
+    except ImportError as exc:  # pragma: no cover - dependency is optional.
+        raise ImportError(
+            "astropy is required to read Gaia VOTable catalogs; install it with "
+            "'pip install astropy' (or the project's 'fits' extra)"
+        ) from exc
+
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"VOTable benchmark catalog not found: {path}")
+
+    votable = parse_votable(str(path))
+    table = votable.get_first_table().to_table(use_names_over_ids=True)
+    frame = _canonicalize_table_columns(table)
+    if frame.empty:
+        raise ValueError(f"No rows found in VOTable benchmark catalog: {path}")
+    return frame
+
+
 def load_mesa_web_job(job_path: str | Path, profile_number: int | None = None) -> StellarModel:
     """Load one snapshot from a legacy MESA-Web job (latest by default)."""
 

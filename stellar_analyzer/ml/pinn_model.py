@@ -84,32 +84,51 @@ def build_differentiable_features(stored_features):
 
 
 class RadialAttention(nn.Module if nn is not None else object):
-    def __init__(self, width: int):
+    """Additive (Bahdanau-style) multi-head attention over the radial axis.
+
+    Each head keeps its own ``tanh`` scoring MLP and produces one scalar
+    score per radial point, exactly as the original single-head module did.
+    With ``num_heads=1`` this reduces to the original module bit-for-bit:
+    same score network shape, same value projection, same residual sum.
+    Extra heads are independent score/value pairs whose per-head contexts
+    are summed into the residual, so the trunk's output width, and the
+    model's output shape, are unchanged by ``num_heads``.
+    """
+
+    def __init__(self, width: int, num_heads: int = 1):
         _require_torch()
         super().__init__()
-        self.score = nn.Sequential(nn.Linear(width, width // 2), nn.Tanh(), nn.Linear(width // 2, 1))
-        self.value = nn.Linear(width, width)
+        if num_heads < 1:
+            raise ValueError("num_heads must be at least 1")
+        self.num_heads = num_heads
+        self.scores = nn.ModuleList(
+            [nn.Sequential(nn.Linear(width, width // 2), nn.Tanh(), nn.Linear(width // 2, 1))
+             for _ in range(num_heads)]
+        )
+        self.values = nn.ModuleList([nn.Linear(width, width) for _ in range(num_heads)])
 
     def forward(self, x):
-        weights = torch.softmax(self.score(x), dim=1)
-        context = torch.sum(weights * self.value(x), dim=1, keepdim=True)
+        context = 0.0
+        for score, value in zip(self.scores, self.values):
+            weights = torch.softmax(score(x), dim=1)
+            context = context + torch.sum(weights * value(x), dim=1, keepdim=True)
         return x + context
 
 
 class StellarPINN(nn.Module if nn is not None else object):
     """Radial sequence PINN with global deviation and profile heads."""
 
-    def __init__(self, input_dim: int = 15, width: int = 128, depth: int = 5):
+    def __init__(self, input_dim: int = 15, width: int = 128, depth: int = 5, num_heads: int = 1):
         _require_torch()
         super().__init__()
-        self.architecture = {"input_dim": input_dim, "width": width, "depth": depth}
+        self.architecture = {"input_dim": input_dim, "width": width, "depth": depth, "num_heads": num_heads}
         layers = []
         current = input_dim
         for _ in range(depth):
             layers.extend([nn.Linear(current, width), nn.Tanh()])
             current = width
         self.trunk = nn.Sequential(*layers)
-        self.attention = RadialAttention(width)
+        self.attention = RadialAttention(width, num_heads=num_heads)
         self.delta_head = nn.Sequential(nn.Linear(width, width // 2), nn.Tanh(), nn.Linear(width // 2, 5))
         self.profile_head = nn.Sequential(nn.Linear(width, width // 2), nn.Tanh(), nn.Linear(width // 2, 3))
 
@@ -196,6 +215,7 @@ class TrainingConfig:
     seed: int = 42
     device: str = "auto"
     output_path: str = "models/pinn_checkpoint.pt"
+    num_heads: int = 1  # Attention heads in RadialAttention; 1 reproduces the original model.
 
 
 def _split_dataset(dataset, seed: int):
@@ -238,7 +258,7 @@ def train_pinn(dataset, config: TrainingConfig | None = None, model: StellarPINN
         torch.cuda.manual_seed_all(config.seed)
     device = torch.device("cuda" if config.device == "auto" and torch.cuda.is_available() else
                           "cpu" if config.device == "auto" else config.device)
-    model = (model or StellarPINN()).to(device)
+    model = (model or StellarPINN(num_heads=config.num_heads)).to(device)
     train_set, val_set, test_set = _split_dataset(dataset, config.seed)
     train_loader = DataLoader(train_set, batch_size=min(config.batch_size, len(train_set)), shuffle=True)
     val_loader = DataLoader(val_set, batch_size=len(val_set))
