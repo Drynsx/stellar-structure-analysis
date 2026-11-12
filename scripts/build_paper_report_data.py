@@ -37,6 +37,7 @@ from stellar_analyzer.core.validation import assess_multitrack_manifest, leave_o
 
 DEFAULT_JOB = PROJECT_ROOT / "data" / "raw" / "MESA-Web_Job_03242664908"
 DEFAULT_OUTPUT = PROJECT_ROOT / "paper_report_data"
+DEFAULT_BUNDLE_DIR = PROJECT_ROOT / "outputs" / "paper_report_data_bundle"
 BOOTSTRAP_CACHE = PROJECT_ROOT / "data" / "processed" / "bootstrap_summary.json"
 PAPER_REFERENCE = Path(r"C:\Users\Lenovo\Documents\physics sheets\บท1-3 (fixed format ครั้ง 1).pdf")
 
@@ -591,6 +592,30 @@ Important interpretation notes:
     _write_csv(output / "MANIFEST.csv", manifest_rows)
 
 
+def package_bundle(source: Path, bundle_dir: Path = DEFAULT_BUNDLE_DIR) -> Path:
+    """Copy the evidence package into outputs/ and zip it for easy sharing.
+
+    ``paper_report_data/`` itself stays the canonical, always-current
+    output of ``build()``; this just mirrors a snapshot of it into
+    ``outputs/`` (plus a matching ``.zip``) for handing to someone who
+    wants one file rather than a directory tree, e.g. a project binder
+    for ISEF. Re-run this (or pass --bundle to this script) any time
+    paper_report_data/ changes, so the bundle doesn't go stale.
+    """
+
+    if not source.exists():
+        raise FileNotFoundError(f"Evidence package not found: {source}; run build() first")
+
+    bundle_dir.parent.mkdir(parents=True, exist_ok=True)
+    if bundle_dir.exists():
+        shutil.rmtree(bundle_dir)
+    shutil.copytree(source, bundle_dir)
+
+    zip_base = str(bundle_dir)  # shutil appends .zip
+    archive_path = Path(shutil.make_archive(zip_base, "zip", root_dir=bundle_dir.parent, base_dir=bundle_dir.name))
+    return archive_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--job", type=Path, default=DEFAULT_JOB)
@@ -598,9 +623,17 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--bootstrap", type=int, default=0, metavar="RESAMPLES")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--bundle", action="store_true",
+        help="also copy the evidence package into outputs/paper_report_data_bundle/ and zip it",
+    )
+    parser.add_argument("--bundle-dir", type=Path, default=DEFAULT_BUNDLE_DIR)
     args = parser.parse_args()
     build(args.job, args.output, args.bootstrap, args.seed, args.extra_job)
     print(args.output.resolve())
+    if args.bundle:
+        archive_path = package_bundle(args.output, args.bundle_dir)
+        print(archive_path.resolve())
 
 
 if __name__ == "__main__":
